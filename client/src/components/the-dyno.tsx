@@ -365,8 +365,8 @@ export default function TheDyno() {
               <InfoCell label="Published" value={stats.publishedArtworks} />
               <InfoCell label="Sold" value={stats.soldArtworks} />
               <InfoCell label="Total Orders" value={stats.totalOrders} />
-              <InfoCell label="Subscribers" value={stats.subscriberCount} />
-              <InfoCell label="Blog Posts" value={stats.publishedPosts} />
+              <InfoCell label="Newsletter Subscribers" value={stats.subscriberCount} />
+              <InfoCell label="Blog Posts Published" value={stats.publishedPosts} />
             </div>
           </div>
 
