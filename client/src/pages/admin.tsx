@@ -3835,7 +3835,7 @@ function BulkImportModal({ onClose, onViewDrafts, toast }: { onClose: () => void
   };
 
   const handleImportCSV = async () => {
-    const valid = csvRows.filter((r) => r.errors.length === 0);
+    const valid = csvRows.filter((r) => r.errors.length === 0).slice(0, 50);
     if (valid.length === 0) return;
     setImporting(true);
     try {
@@ -3954,8 +3954,9 @@ function BulkImportModal({ onClose, onViewDrafts, toast }: { onClose: () => void
     setImporting(false);
   };
 
-  const validCount = csvRows.filter((r) => r.errors.length === 0).length;
+  const validCount = Math.min(csvRows.filter((r) => r.errors.length === 0).length, 50);
   const invalidCount = csvRows.filter((r) => r.errors.length > 0).length;
+  const skippedCount = Math.max(0, csvRows.filter((r) => r.errors.length === 0).length - 50);
 
   return (
     <div
@@ -4076,6 +4077,14 @@ function BulkImportModal({ onClose, onViewDrafts, toast }: { onClose: () => void
                         </table>
                       </div>
 
+                      {skippedCount > 0 && (
+                        <div className="flex items-start gap-2 p-3 bg-amber-500/5 border border-amber-500/20 rounded-sm text-xs">
+                          <AlertCircle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+                          <span className="text-amber-400/80">
+                            Only the first 50 valid rows will be imported. {skippedCount} row{skippedCount !== 1 ? "s" : ""} will be skipped. Split your CSV to import more.
+                          </span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-3">
                         <Button
                           className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs"
