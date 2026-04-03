@@ -1395,6 +1395,17 @@ Respond in JSON format:
 
   // ─── Dashboard Stats ──────────────────────────────────────────
 
+  // ─── Art Stats Endpoint ───────────────────────────────────────
+  app.get("/api/stats/art", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
+    try {
+      const stats = await storage.getArtStats();
+      res.json(stats);
+    } catch (e: any) {
+      console.error("Art stats error:", e?.message);
+      res.status(500).json({ message: "Failed to fetch art stats" });
+    }
+  });
+
   app.get("/api/stats", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
     try {
       const [allLeads, allPosts, allSubscribers, allNewsletters, allRatings, allBacklinks] = await Promise.all([

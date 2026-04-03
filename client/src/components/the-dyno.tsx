@@ -1,23 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, TrendingUp } from "lucide-react";
 
-interface DynoData {
-  rpm: number;
-  rpmMax: number;
-  speed: number;
-  temp: number;
-  tempRaw: number;
-  fuel: number;
-  fuelMax: number;
-  boost: number;
-  totalReads: number;
-  totalShares: number;
-  totalClicks: number;
-  totalBacklinks: number;
+const ACCENT = "#C084FC";
+
+interface ArtStats {
+  artworkViews30d: number;
+  artworkViews30dMax: number;
+  shopConversionRate: number;
+  commissionRate: number;
+  revenue30d: number;
+  revenue30dMax: number;
+  returningVisitorRate: number;
+  topArtworks: { id: number; title: string; slug: string; viewCount: number; forSale: boolean; sold: boolean }[];
+  totalArtworks: number;
+  publishedArtworks: number;
+  soldArtworks: number;
+  totalOrders: number;
+  subscriberCount: number;
   publishedPosts: number;
-  activeSubscribers: number;
-  totalRatings: number;
-  deliveredCount: number;
 }
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
@@ -41,7 +41,7 @@ function GaugeSVG({
   size = 180,
   startAngle = -225,
   endAngle = 45,
-  color = "#5D3FD3",
+  color = ACCENT,
   warningZone = 0.8,
   tickCount = 10,
 }: {
@@ -80,7 +80,7 @@ function GaugeSVG({
           y1={outer.y}
           x2={inner.x}
           y2={inner.y}
-          stroke={isWarning ? "#5D3FD3" : "#4A4A50"}
+          stroke={isWarning ? ACCENT : "#4A4A50"}
           strokeWidth={i % 2 === 0 ? 2 : 1}
           strokeLinecap="round"
         />
@@ -88,7 +88,7 @@ function GaugeSVG({
           <text
             x={labelPos.x}
             y={labelPos.y}
-            fill={isWarning ? "#5D3FD3" : "#666"}
+            fill={isWarning ? ACCENT : "#666"}
             fontSize={Math.max(Math.round(size * 0.04), 6)}
             textAnchor="middle"
             dominantBaseline="middle"
@@ -192,7 +192,7 @@ function VerticalBar({
   max,
   label,
   displayValue,
-  color = "#5D3FD3",
+  color = ACCENT,
 }: {
   value: number;
   max: number;
@@ -227,63 +227,68 @@ function InfoCell({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function TheDyno() {
-  const { data: stats, isLoading } = useQuery<{
-    leads: { total: number; new: number; recent: number; closed: number };
-    posts: { published: number };
-    subscribers: { active: number };
-    newsletters: { sent: number };
-    dyno: DynoData;
-  }>({
-    queryKey: ["/api/stats"],
+  const { data: stats, isLoading } = useQuery<ArtStats>({
+    queryKey: ["/api/stats/art"],
+    refetchInterval: 30000,
   });
 
-  if (isLoading || !stats?.dyno) {
+  if (isLoading || !stats) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 text-[#5D3FD3] animate-spin" data-testid="loader-dyno" />
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: ACCENT }} data-testid="loader-dyno" />
       </div>
     );
   }
 
-  const d = stats.dyno;
+  const revenueDisplay = stats.revenue30d >= 1000
+    ? `$${(stats.revenue30d / 1000).toFixed(1)}k`
+    : `$${stats.revenue30d.toFixed(0)}`;
+
+  const gaugeColor = (isHigh: boolean) => isHigh ? "#22C55E" : ACCENT;
 
   return (
     <div className="space-y-6" data-testid="the-dyno">
       <div className="relative rounded-md bg-[#0A0A0C] border border-white/5 overflow-visible">
         <div className="absolute inset-0 rounded-md" style={{
-          background: "radial-gradient(ellipse at 50% 30%, rgba(255,25,44,0.03) 0%, transparent 70%)",
+          background: `radial-gradient(ellipse at 50% 30%, ${ACCENT}08 0%, transparent 70%)`,
         }} />
 
         <div className="relative z-10 px-4 py-6 sm:px-8 sm:py-8">
           <div className="flex items-center justify-center gap-3 mb-2">
-            <div className="h-px flex-1 max-w-16" style={{ background: "linear-gradient(to right, transparent, #5D3FD333)" }} />
-            <img
-              src="/startup-alchemist-rocket.png"
-              alt="Startup Alchemist"
-              className="h-5 w-5 object-contain"
-              style={{ filter: "brightness(0) invert(1)", opacity: 0.3 }}
-            />
-            <span className="text-[10px] uppercase tracking-[0.4em] text-[#5D3FD3]/40 font-semibold">
+            <div className="h-px flex-1 max-w-16" style={{ background: `linear-gradient(to right, transparent, ${ACCENT}33)` }} />
+            <span className="text-[10px] uppercase tracking-[0.4em] font-semibold" style={{ color: `${ACCENT}66` }}>
               The Dyno
             </span>
-            <div className="h-px flex-1 max-w-16" style={{ background: "linear-gradient(to left, transparent, #5D3FD333)" }} />
+            <div className="h-px flex-1 max-w-16" style={{ background: `linear-gradient(to left, transparent, ${ACCENT}33)` }} />
           </div>
           <p className="text-center text-[9px] uppercase tracking-[0.3em] text-[#B3B3B8]/30 mb-8">
-            Performance Instrument Cluster
+            Art Performance Instrument Cluster
           </p>
 
           <div className="flex items-end justify-center gap-2 lg:gap-3">
             <div className="hidden lg:flex flex-col gap-2 shrink-0">
-              <VerticalBar value={d.totalReads} max={Math.max(d.totalReads, 100)} label="Reads" displayValue={String(d.totalReads)} color="#3B82F6" />
-              <VerticalBar value={d.totalShares} max={Math.max(d.totalShares, 50)} label="Shares" displayValue={String(d.totalShares)} color="#8B5CF6" />
+              <VerticalBar
+                value={stats.publishedArtworks}
+                max={Math.max(stats.totalArtworks, 10)}
+                label="Published"
+                displayValue={String(stats.publishedArtworks)}
+                color="#22C55E"
+              />
+              <VerticalBar
+                value={stats.soldArtworks}
+                max={Math.max(stats.publishedArtworks, 5)}
+                label="Sold"
+                displayValue={String(stats.soldArtworks)}
+                color={ACCENT}
+              />
             </div>
 
             <GaugeSVG
-              value={d.fuel}
-              max={d.fuelMax}
-              label="Pipeline"
-              unit="ACTIVE"
-              displayValue={String(d.fuel)}
+              value={stats.artworkViews30d}
+              max={stats.artworkViews30dMax}
+              label="Views"
+              unit="30D"
+              displayValue={stats.artworkViews30d >= 1000 ? `${(stats.artworkViews30d / 1000).toFixed(1)}k` : String(stats.artworkViews30d)}
               size={120}
               color="#22C55E"
               warningZone={0.9}
@@ -291,22 +296,22 @@ export default function TheDyno() {
             />
 
             <GaugeSVG
-              value={d.rpm}
-              max={d.rpmMax}
-              label="Traffic"
-              unit="LEADS/30D"
-              displayValue={String(d.rpm)}
+              value={stats.shopConversionRate}
+              max={100}
+              label="Shop Conv."
+              unit="% VIEWS→CTA"
+              displayValue={`${stats.shopConversionRate}%`}
               size={150}
-              color="#5D3FD3"
+              color={ACCENT}
               warningZone={0.8}
             />
 
             <GaugeSVG
-              value={d.speed}
+              value={stats.commissionRate}
               max={100}
-              label="Conversion"
-              unit="CLOSE RATE"
-              displayValue={`${d.speed}%`}
+              label="Commission"
+              unit="% OF INQUIRIES"
+              displayValue={`${stats.commissionRate}%`}
               size={170}
               color="#F59E0B"
               warningZone={0.95}
@@ -314,22 +319,22 @@ export default function TheDyno() {
             />
 
             <GaugeSVG
-              value={d.temp}
-              max={100}
-              label="Sentiment"
-              unit={`${d.tempRaw}/5 AVG`}
-              displayValue={d.tempRaw > 0 ? String(d.tempRaw) : "—"}
+              value={stats.revenue30d}
+              max={stats.revenue30dMax}
+              label="Revenue"
+              unit="30D USD"
+              displayValue={revenueDisplay}
               size={150}
-              color={d.temp > 80 ? "#22C55E" : d.temp > 50 ? "#F59E0B" : "#5D3FD3"}
+              color={gaugeColor(stats.revenue30d > 0)}
               warningZone={0.2}
             />
 
             <GaugeSVG
-              value={d.boost}
+              value={stats.returningVisitorRate}
               max={100}
-              label="CTA Rate"
-              unit="UTM"
-              displayValue={`${d.boost}%`}
+              label="Returning"
+              unit="% VISITORS"
+              displayValue={`${stats.returningVisitorRate}%`}
               size={120}
               color="#3B82F6"
               warningZone={0.95}
@@ -337,39 +342,88 @@ export default function TheDyno() {
             />
 
             <div className="hidden lg:flex flex-col gap-2 shrink-0">
-              <VerticalBar value={d.totalClicks} max={Math.max(d.totalClicks, 50)} label="Clicks" displayValue={String(d.totalClicks)} color="#F59E0B" />
-              <VerticalBar value={d.totalBacklinks} max={Math.max(d.totalBacklinks, 20)} label="Links" displayValue={String(d.totalBacklinks)} color="#22C55E" />
+              <VerticalBar
+                value={stats.subscriberCount}
+                max={Math.max(stats.subscriberCount, 50)}
+                label="Subscribers"
+                displayValue={String(stats.subscriberCount)}
+                color="#F59E0B"
+              />
+              <VerticalBar
+                value={stats.publishedPosts}
+                max={Math.max(stats.publishedPosts, 20)}
+                label="Posts"
+                displayValue={String(stats.publishedPosts)}
+                color="#3B82F6"
+              />
             </div>
           </div>
 
           <div className="mt-8 pt-6 border-t border-white/5">
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 sm:gap-6">
-              <InfoCell label="Total Leads" value={stats.leads.total} />
-              <InfoCell label="Delivered" value={d.deliveredCount} />
-              <InfoCell label="Published" value={d.publishedPosts} />
-              <InfoCell label="Subscribers" value={d.activeSubscribers} />
-              <InfoCell label="Newsletters" value={stats.newsletters.sent} />
-              <InfoCell label="Ratings" value={d.totalRatings} />
+              <InfoCell label="Total Artworks" value={stats.totalArtworks} />
+              <InfoCell label="Published" value={stats.publishedArtworks} />
+              <InfoCell label="Sold" value={stats.soldArtworks} />
+              <InfoCell label="Total Orders" value={stats.totalOrders} />
+              <InfoCell label="Subscribers" value={stats.subscriberCount} />
+              <InfoCell label="Blog Posts" value={stats.publishedPosts} />
             </div>
           </div>
 
           <div className="lg:hidden mt-6 pt-4 border-t border-white/5">
             <div className="grid grid-cols-4 gap-3">
-              <InfoCell label="Reads" value={d.totalReads} />
-              <InfoCell label="Shares" value={d.totalShares} />
-              <InfoCell label="Clicks" value={d.totalClicks} />
-              <InfoCell label="Backlinks" value={d.totalBacklinks} />
+              <InfoCell label="Published" value={stats.publishedArtworks} />
+              <InfoCell label="Sold" value={stats.soldArtworks} />
+              <InfoCell label="Subscribers" value={stats.subscriberCount} />
+              <InfoCell label="Posts" value={stats.publishedPosts} />
             </div>
           </div>
+
+          {stats.topArtworks.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-white/5">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="w-3 h-3" style={{ color: ACCENT }} />
+                <span className="text-[9px] uppercase tracking-[0.3em] text-[#B3B3B8]/40 font-semibold">Top Works</span>
+              </div>
+              <div className="space-y-2" data-testid="top-works-list">
+                {stats.topArtworks.map((work, i) => (
+                  <a
+                    key={work.id}
+                    href={`/shop/${work.slug}`}
+                    className="flex items-center gap-3 group"
+                    data-testid={`top-work-${work.id}`}
+                  >
+                    <span className="text-[10px] tabular-nums text-[#B3B3B8]/30 w-4 shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-[#F5F5F7]/80 truncate group-hover:text-[#F5F5F7] transition-colors">
+                        {work.title}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Eye className="w-2.5 h-2.5 text-[#B3B3B8]/30" />
+                      <span className="text-[10px] tabular-nums text-[#B3B3B8]/50">{work.viewCount}</span>
+                      {work.sold ? (
+                        <span className="text-[8px] px-1 py-0.5 rounded bg-[#22C55E]/10 text-[#22C55E]/70 uppercase tracking-wider">Sold</span>
+                      ) : work.forSale ? (
+                        <span className="text-[8px] px-1 py-0.5 rounded uppercase tracking-wider" style={{ background: `${ACCENT}18`, color: `${ACCENT}99` }}>For Sale</span>
+                      ) : (
+                        <span className="text-[8px] px-1 py-0.5 rounded bg-white/5 text-[#B3B3B8]/40 uppercase tracking-wider">Gallery</span>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-center gap-4 pb-4">
           {[
-            { c: "#22C55E", l: "Pipeline" },
-            { c: "#5D3FD3", l: "Traffic" },
-            { c: "#F59E0B", l: "Conversion" },
-            { c: d.temp > 80 ? "#22C55E" : d.temp > 50 ? "#F59E0B" : "#5D3FD3", l: "Sentiment" },
-            { c: "#3B82F6", l: "CTA Rate" },
+            { c: "#22C55E", l: "Views" },
+            { c: ACCENT, l: "Shop Conv." },
+            { c: "#F59E0B", l: "Commission" },
+            { c: "#22C55E", l: "Revenue" },
+            { c: "#3B82F6", l: "Returning" },
           ].map((item) => (
             <div key={item.l} className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.c, boxShadow: `0 0 4px ${item.c}44` }} />

@@ -153,6 +153,23 @@ export interface IStorage {
   incrementPageView(slug: string): Promise<void>;
   incrementPageCTA(slug: string): Promise<void>;
   incrementPageConversion(slug: string): Promise<void>;
+
+  getArtStats(): Promise<{
+    artworkViews30d: number;
+    artworkViews30dMax: number;
+    shopConversionRate: number;
+    commissionRate: number;
+    revenue30d: number;
+    revenue30dMax: number;
+    returningVisitorRate: number;
+    topArtworks: { id: number; title: string; slug: string; viewCount: number; forSale: boolean; sold: boolean }[];
+    totalArtworks: number;
+    publishedArtworks: number;
+    soldArtworks: number;
+    totalOrders: number;
+    subscriberCount: number;
+    publishedPosts: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -610,6 +627,62 @@ export class DatabaseStorage implements IStorage {
   }
   async incrementPageConversion(slug: string): Promise<void> {
     await db.update(pageRegistry).set({ conversionCount: sql`${pageRegistry.conversionCount} + 1` }).where(eq(pageRegistry.slug, slug));
+  }
+
+  async getArtStats() {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const [allArtworks, allOrders, allSubscribers, allPosts, allLeads, allEvents] = await Promise.all([
+      db.select().from(artworks),
+      db.select().from(orders),
+      db.select().from(subscribers),
+      db.select().from(posts),
+      db.select().from(leads),
+      db.select().from(analyticsEvents).where(gte(analyticsEvents.createdAt, thirtyDaysAgo)),
+    ]);
+
+    const artworkViews30d = allEvents.filter((e) => e.eventType === "artwork_view").length;
+    const shopCtaClicks = allEvents.filter((e) => e.eventType === "cta_click" && e.page.includes("/shop")).length;
+    const shopConversionRate = artworkViews30d > 0 ? Math.round((shopCtaClicks / artworkViews30d) * 100) : 0;
+
+    const totalLeads = allLeads.length;
+    const commissionLeads = allLeads.filter((l) => (l.subject || "").toLowerCase().includes("commission")).length;
+    const commissionRate = totalLeads > 0 ? Math.round((commissionLeads / totalLeads) * 100) : 0;
+
+    const paidOrders30d = allOrders.filter((o) => o.status === "paid" && o.createdAt > thirtyDaysAgo);
+    const revenue30d = paidOrders30d.reduce((s, o) => s + parseFloat(o.amount || "0"), 0);
+
+    const sessionPageViews = new Map<string, number>();
+    for (const e of allEvents) {
+      if (e.eventType === "page_view" && e.sessionId) {
+        sessionPageViews.set(e.sessionId, (sessionPageViews.get(e.sessionId) || 0) + 1);
+      }
+    }
+    const totalSessions = sessionPageViews.size;
+    const returningSessions = Array.from(sessionPageViews.values()).filter((c) => c > 1).length;
+    const returningVisitorRate = totalSessions > 0 ? Math.round((returningSessions / totalSessions) * 100) : 0;
+
+    const topArtworks = [...allArtworks]
+      .sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0))
+      .slice(0, 5)
+      .map((a) => ({ id: a.id, title: a.title, slug: a.slug, viewCount: a.viewCount || 0, forSale: a.forSale, sold: a.sold }));
+
+    return {
+      artworkViews30d,
+      artworkViews30dMax: Math.max(artworkViews30d, 100),
+      shopConversionRate,
+      commissionRate,
+      revenue30d: Math.round(revenue30d * 100) / 100,
+      revenue30dMax: Math.max(Math.ceil(revenue30d / 100) * 100, 500),
+      returningVisitorRate,
+      topArtworks,
+      totalArtworks: allArtworks.length,
+      publishedArtworks: allArtworks.filter((a) => a.status === "published").length,
+      soldArtworks: allArtworks.filter((a) => a.sold).length,
+      totalOrders: allOrders.length,
+      subscriberCount: allSubscribers.filter((s) => s.status === "active").length,
+      publishedPosts: allPosts.filter((p) => p.status === "published").length,
+    };
   }
 }
 
