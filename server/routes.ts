@@ -1996,15 +1996,14 @@ Generate only the requested fields. Respond in this exact JSON format:
       if (items.length > 50) {
         return res.status(400).json({ message: "Maximum 50 artworks per request" });
       }
-      const bulkSchema = z.array(
-        insertArtworkSchema.extend({
-          title: z.string().min(1),
-          category: z.enum(artworkCategories).optional().default("Abstract"),
-          forSale: z.boolean().optional().default(false),
-          featured: z.boolean().optional().default(false),
-          status: z.enum(artworkStatuses).optional().default("draft"),
-        })
-      );
+      const bulkItemSchema = insertArtworkSchema.omit({ slug: true }).extend({
+        title: z.string().min(1),
+        category: z.enum(artworkCategories).optional().default("Abstract"),
+        forSale: z.boolean().optional().default(false),
+        featured: z.boolean().optional().default(false),
+        status: z.enum(artworkStatuses).optional().default("draft"),
+      });
+      const bulkSchema = z.array(bulkItemSchema);
       const parsed = bulkSchema.safeParse(items);
       if (!parsed.success) {
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.errors });
