@@ -344,11 +344,50 @@ async function seedServices(): Promise<void> {
   }
 }
 
+async function seedStaticPageRegistry(): Promise<void> {
+  try {
+    const flag = await storage.getSetting("static_pages_seeded_v1");
+    if (flag === "done") return;
+
+    const STATIC_PAGES = [
+      { slug: "", title: "Home", pageType: "static" as const, seoTitle: "Creations by Oracle — Original Art | Abstract, Portraits & Sculpture", seoDescription: "Original abstract canvas works, life-like portraits, 3D art installations, and copper sculptures. Commissions welcome.", seoKeywords: ["abstract art", "original paintings", "copper sculpture", "art commissions"] },
+      { slug: "shop", title: "Shop", pageType: "static" as const, seoTitle: "Shop — Creations by Oracle", seoDescription: "Browse original paintings, sculptures, and prints available for purchase.", seoKeywords: ["buy original art", "art for sale", "paintings for sale"] },
+      { slug: "gallery", title: "Gallery", pageType: "static" as const, seoTitle: "Gallery — Creations by Oracle", seoDescription: "A curated view of the full portfolio from Creations by Oracle.", seoKeywords: ["art gallery", "portfolio", "abstract art gallery"] },
+      { slug: "about", title: "About", pageType: "static" as const, seoTitle: "About — Creations by Oracle", seoDescription: "Learn about the artist behind Creations by Oracle — process, inspiration, and vision.", seoKeywords: ["about Creations by Oracle", "artist biography"] },
+      { slug: "blog", title: "Blog", pageType: "blog" as const, seoTitle: "Blog — Creations by Oracle", seoDescription: "Art insights, process notes, and creative reflections from Creations by Oracle.", seoKeywords: ["art blog", "creative process", "studio notes"] },
+      { slug: "contact", title: "Contact", pageType: "static" as const, seoTitle: "Contact & Commissions — Creations by Oracle", seoDescription: "Commission a piece or inquire about available works. Reach out to Creations by Oracle.", seoKeywords: ["art commissions", "contact artist"] },
+    ];
+
+    for (const p of STATIC_PAGES) {
+      const existing = await storage.getPageBySlug(p.slug);
+      if (!existing) {
+        await storage.createPage({
+          slug: p.slug,
+          title: p.title,
+          pageType: p.pageType,
+          seoTitle: p.seoTitle,
+          seoDescription: p.seoDescription,
+          seoKeywords: p.seoKeywords,
+          status: "published",
+          linkedEntityId: null,
+          linkedEntityType: null,
+        });
+      }
+    }
+
+    await storage.setSetting("static_pages_seeded_v1", "done");
+    log(`[page registry seed] Seeded ${STATIC_PAGES.length} static page registry entries`);
+  } catch (err) {
+    log(`[page registry seed] Failed: ${err}`);
+  }
+}
+
 (async () => {
   await seedRootUser();
   await runOneTimePDRCleanup();
   await seedGallery();
   await seedServices();
+  await seedStaticPageRegistry();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

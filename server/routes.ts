@@ -2297,22 +2297,16 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
         : "http://localhost:5000";
 
-      const now = new Date().toISOString().split("T")[0];
-
-      const staticPages = [
-        { loc: "/", priority: "1.0", changefreq: "weekly" },
-        { loc: "/shop", priority: "0.8", changefreq: "daily" },
-        { loc: "/gallery", priority: "0.6", changefreq: "weekly" },
-        { loc: "/about", priority: "0.6", changefreq: "monthly" },
-        { loc: "/blog", priority: "0.7", changefreq: "daily" },
-        { loc: "/contact", priority: "0.6", changefreq: "monthly" },
-      ];
-
       const pages = await storage.getPageRegistry();
-      const dynamicEntries: { loc: string; lastmod: string; priority: string; changefreq: string }[] = [];
+      const seen = new Set<string>();
+      const entries: { loc: string; lastmod: string; priority: string; changefreq: string }[] = [];
 
       for (const page of pages) {
         if (page.status !== "published") continue;
+        const loc = page.slug === "" ? "/" : `/${page.slug}`;
+        if (seen.has(loc)) continue;
+        seen.add(loc);
+
         let priority = "0.6";
         let changefreq = "weekly";
         if (page.pageType === "artwork") {
@@ -2322,18 +2316,18 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
           priority = "0.7";
           changefreq = "monthly";
         }
-        dynamicEntries.push({
-          loc: `/${page.slug}`,
+
+        entries.push({
+          loc,
           lastmod: (page.updatedAt || page.createdAt).toISOString().split("T")[0],
           priority,
           changefreq,
         });
       }
 
-      const urls = [
-        ...staticPages.map((p) => `  <url>\n    <loc>${baseUrl}${p.loc}</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`),
-        ...dynamicEntries.map((p) => `  <url>\n    <loc>${baseUrl}${p.loc}</loc>\n    <lastmod>${p.lastmod}</lastmod>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`),
-      ];
+      const urls = entries.map(
+        (p) => `  <url>\n    <loc>${baseUrl}${p.loc}</loc>\n    <lastmod>${p.lastmod}</lastmod>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`
+      );
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;
 
