@@ -2008,14 +2008,17 @@ Generate only the requested fields. Respond in this exact JSON format:
       if (!parsed.success) {
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.errors });
       }
-      // Pre-generate slugs, checking for collisions before the transaction
+      // Pre-generate unique slugs before the transaction
       const artworkItems: Parameters<typeof storage.bulkCreateArtworks>[0] = [];
       const usedSlugs = new Set<string>();
       for (const item of parsed.data) {
-        let slug = slugify(item.title);
-        if (usedSlugs.has(slug)) slug = slug + "-" + Date.now().toString(36);
-        const existing = await storage.getArtworkBySlug(slug);
-        if (existing) slug = slug + "-" + Date.now().toString(36);
+        let base = slugify(item.title);
+        let slug = base;
+        let counter = 1;
+        // Check both in-batch duplicates and existing DB records
+        while (usedSlugs.has(slug) || await storage.getArtworkBySlug(slug)) {
+          slug = `${base}-${counter++}`;
+        }
         usedSlugs.add(slug);
         artworkItems.push({
           title: item.title,

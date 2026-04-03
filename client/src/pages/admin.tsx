@@ -3804,7 +3804,7 @@ function BulkImportModal({ onClose, onViewDrafts, toast }: { onClose: () => void
   const [csvRows, setCsvRows] = useState<{ row: Record<string, string>; errors: string[] }[]>([]);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ count: number } | null>(null);
-  const [imageFiles, setImageFiles] = useState<{ file: File; name: string; status: "pending" | "uploading" | "done" | "error"; url?: string }[]>([]);
+  const [imageFiles, setImageFiles] = useState<{ file: File; name: string; status: "pending" | "uploading" | "done" | "error"; url?: string; progress?: number }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
   const downloadTemplate = () => {
@@ -3879,13 +3879,35 @@ function BulkImportModal({ onClose, onViewDrafts, toast }: { onClose: () => void
     e.target.value = "";
   };
 
+  const uploadWithProgress = (base64: string, name: string, onProgress: (pct: number) => void): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const body = JSON.stringify({ imageData: base64, filename: name });
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve(JSON.parse(xhr.responseText).url); } catch { reject(new Error("Invalid response")); }
+        } else {
+          reject(new Error(`Upload failed: ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Network error"));
+      xhr.send(body);
+    });
+  };
+
   const handleImportImages = async () => {
     if (imageFiles.length === 0) return;
     setImporting(true);
     const updated = [...imageFiles];
     for (let i = 0; i < updated.length; i++) {
       if (updated[i].status === "done") continue;
-      updated[i] = { ...updated[i], status: "uploading" };
+      updated[i] = { ...updated[i], status: "uploading", progress: 0 };
       setImageFiles([...updated]);
       try {
         const base64 = await new Promise<string>((resolve, reject) => {
@@ -3894,12 +3916,14 @@ function BulkImportModal({ onClose, onViewDrafts, toast }: { onClose: () => void
           reader.onerror = reject;
           reader.readAsDataURL(updated[i].file);
         });
-        const resp = await apiRequest("POST", "/api/upload", { imageData: base64, filename: updated[i].name });
-        const { url } = await resp.json();
-        updated[i] = { ...updated[i], status: "done", url };
+        const url = await uploadWithProgress(base64, updated[i].name, (pct) => {
+          updated[i] = { ...updated[i], progress: pct };
+          setImageFiles([...updated]);
+        });
+        updated[i] = { ...updated[i], status: "done", url, progress: 100 };
         setImageFiles([...updated]);
       } catch {
-        updated[i] = { ...updated[i], status: "error" };
+        updated[i] = { ...updated[i], status: "error", progress: undefined };
         setImageFiles([...updated]);
       }
     }
@@ -4106,7 +4130,20 @@ function BulkImportModal({ onClose, onViewDrafts, toast }: { onClose: () => void
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-[#F5F5F7] text-xs font-medium truncate">{f.name}</p>
-                              <p className="text-[#B3B3B8]/40 text-[10px]">{(f.file.size / 1024).toFixed(0)} KB</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <p className="text-[#B3B3B8]/40 text-[10px]">{(f.file.size / 1024).toFixed(0)} KB</p>
+                                {f.status === "uploading" && f.progress !== undefined && (
+                                  <span className="text-[10px] text-[#C084FC]">{f.progress}%</span>
+                                )}
+                              </div>
+                              {f.status === "uploading" && f.progress !== undefined && (
+                                <div className="mt-1 h-1 bg-white/5 rounded-full overflow-hidden" data-testid={`progress-bar-${i}`}>
+                                  <div
+                                    className="h-full bg-[#C084FC] transition-all duration-200"
+                                    style={{ width: `${f.progress}%` }}
+                                  />
+                                </div>
+                              )}
                             </div>
                             <div className="shrink-0">
                               {f.status === "pending" && <span className="text-[10px] text-[#B3B3B8]/40">Ready</span>}
