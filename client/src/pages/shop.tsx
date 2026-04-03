@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Palette, ArrowRight, Filter } from "lucide-react";
 import type { Artwork } from "@shared/schema";
 import { artworkCategories } from "@shared/schema";
+import { useOgImage } from "@/hooks/use-og-image";
 
 function useSessionId() {
   const [id] = useState(() => {
@@ -73,6 +74,7 @@ function ArtworkCard({ artwork }: { artwork: Artwork }) {
 }
 
 export default function Shop() {
+  const defaultOgImage = useOgImage();
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [location] = useLocation();
   const sessionId = useSessionId();
@@ -103,8 +105,12 @@ export default function Shop() {
       <meta property="og:description" content="Browse and purchase original artworks by Creations by Oracle — abstract canvas, portraits, 3D installations, and copper sculptures." />
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content="Creations by Oracle" />
+      <meta property="og:image" content={defaultOgImage} />
+      <meta property="og:url" content={typeof window !== "undefined" ? window.location.href : "/shop"} />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Shop Original Art — Creations by Oracle" />
+      <meta name="twitter:description" content="Browse and purchase original artworks by Creations by Oracle — abstract canvas, portraits, 3D installations, and copper sculptures." />
+      <meta name="twitter:image" content={defaultOgImage} />
 
       {/* Header */}
       <div className="pt-32 pb-12 px-6 lg:px-10 max-w-7xl mx-auto">

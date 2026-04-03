@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, Share2, Eye, Palette, ArrowRight } from "lucide-rea
 import { SiX, SiFacebook, SiLinkedin } from "react-icons/si";
 import { apiRequest } from "@/lib/queryClient";
 import type { Artwork } from "@shared/schema";
+import { useOgImage } from "@/hooks/use-og-image";
 
 interface Post {
   id: number;
@@ -109,6 +110,7 @@ function renderMarkdown(content: string): string {
 export default function BlogPost() {
   const { slug } = useParams<{ slug: string }>();
   const readTracked = useRef(false);
+  const defaultOgImage = useOgImage();
 
   const { data: post, isLoading, error } = useQuery<Post>({
     queryKey: ["/api/posts", slug],
@@ -127,17 +129,19 @@ export default function BlogPost() {
   const relatedArtworks = (() => {
     if (!post || !allArtworks || allArtworks.length === 0) return [];
     const postTags = (post.tags || []).map((t: string) => t.toLowerCase());
+    if (postTags.length === 0) return [];
     const scored = allArtworks.map((a) => {
       let score = 0;
-      const artTags = [a.category || "", a.medium || ""].map(s => s.toLowerCase());
+      const artTags = [a.category || "", a.medium || "", ...(a.seoKeywords || [])].map(s => s.toLowerCase());
       for (const tag of postTags) {
         for (const artTag of artTags) {
-          if (artTag.includes(tag) || tag.includes(artTag)) score++;
+          if (artTag && (artTag.includes(tag) || tag.includes(artTag))) score++;
         }
       }
       return { artwork: a, score };
     });
     return scored
+      .filter(s => s.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 3)
       .map(s => s.artwork);
@@ -170,11 +174,11 @@ export default function BlogPost() {
     setOg("og:type", "article");
     setOg("og:url", window.location.href);
     setOg("og:site_name", "Creations by Oracle");
-    setOg("og:image", "/og-image.png");
+    setOg("og:image", defaultOgImage);
     setMeta("twitter:card", "summary_large_image");
     setMeta("twitter:title", post.seoTitle || post.title);
     setMeta("twitter:description", post.excerpt || post.seoDescription || "");
-    setMeta("twitter:image", "/og-image.png");
+    setMeta("twitter:image", defaultOgImage);
 
     let ldEl = document.querySelector('script[data-blog-ld]') as HTMLScriptElement | null;
     if (!ldEl) { ldEl = document.createElement("script"); ldEl.type = "application/ld+json"; ldEl.setAttribute("data-blog-ld", "true"); document.head.appendChild(ldEl); }
@@ -204,7 +208,7 @@ export default function BlogPost() {
       document.querySelector('meta[name="twitter:image"]')?.remove();
       document.querySelector('script[data-blog-ld]')?.remove();
     };
-  }, [post]);
+  }, [post, defaultOgImage]);
 
   const handleShare = (platform: string) => {
     if (!post) return;

@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
+import { useOgImage } from "@/hooks/use-og-image";
 
 interface Post {
   id: number;
@@ -14,6 +15,7 @@ interface Post {
 }
 
 export default function Blog() {
+  const defaultOgImage = useOgImage();
   const { data: posts, isLoading } = useQuery<Post[]>({
     queryKey: ["/api/posts", "published"],
     queryFn: () => fetch("/api/posts?status=published").then(r => r.json()),
@@ -27,6 +29,12 @@ export default function Blog() {
       <meta property="og:description" content="Art insights, process notes, and creative reflections from Creations by Oracle." />
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content="Creations by Oracle" />
+      <meta property="og:image" content={defaultOgImage} />
+      <meta property="og:url" content={typeof window !== "undefined" ? window.location.href : "/blog"} />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="Blog — Creations by Oracle" />
+      <meta name="twitter:description" content="Art insights, process notes, and creative reflections from Creations by Oracle." />
+      <meta name="twitter:image" content={defaultOgImage} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{

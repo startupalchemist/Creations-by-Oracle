@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Eye, ShoppingBag, Palette, Layers } from "lucide-react";
 import type { Artwork } from "@shared/schema";
+import { useOgImage } from "@/hooks/use-og-image";
 
 function useInView(threshold = 0.15) {
   const ref = useRef<HTMLDivElement>(null);
@@ -365,6 +366,7 @@ function CommissionCTASection() {
 }
 
 export default function Home() {
+  const defaultOgImage = useOgImage();
   return (
     <div data-testid="page-home">
       <title>Creations by Oracle — Original Art | Abstract, Portraits & Sculpture</title>
@@ -373,9 +375,12 @@ export default function Home() {
       <meta property="og:description" content="Original abstract canvas works, life-like portraits, 3D art installations, and copper sculptures. Commissions welcome." />
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content="Creations by Oracle" />
+      <meta property="og:image" content={defaultOgImage} />
+      <meta property="og:url" content={typeof window !== "undefined" ? window.location.origin : "/"} />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Creations by Oracle — Original Art" />
       <meta name="twitter:description" content="Original abstract canvas works, life-like portraits, 3D art installations, and copper sculptures. Commissions welcome." />
+      <meta name="twitter:image" content={defaultOgImage} />
       <HeroSection />
       <MediumsSection />
       <FeaturedWorksSection />

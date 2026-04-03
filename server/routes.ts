@@ -1555,6 +1555,19 @@ Respond in JSON format:
 
   // ─── SEO Management Routes ────────────────────────────────────
 
+  app.get("/api/seo/og-image", async (_req, res) => {
+    try {
+      const globalRaw = await storage.getSetting("seo_global");
+      if (globalRaw) {
+        const global = JSON.parse(globalRaw);
+        return res.json({ ogImageUrl: global.ogImageUrl || "/og-image.png" });
+      }
+      res.json({ ogImageUrl: "/og-image.png" });
+    } catch {
+      res.json({ ogImageUrl: "/og-image.png" });
+    }
+  });
+
   app.get("/api/seo", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
     try {
       const [globalRaw, pagesRaw, keywordsRaw] = await Promise.all([
@@ -2249,7 +2262,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         if (page.pageType === "artwork") {
           priority = "0.8";
           changefreq = "monthly";
-        } else if (page.pageType === "post") {
+        } else if (page.pageType === "blog" || page.pageType === "post") {
           priority = "0.7";
           changefreq = "monthly";
         }

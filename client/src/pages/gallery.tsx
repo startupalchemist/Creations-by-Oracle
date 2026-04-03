@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, Loader2 } from "lucide-react";
 import type { GallerySection, GalleryItem } from "@shared/schema";
+import { useOgImage } from "@/hooks/use-og-image";
 
 type GallerySectionWithItems = GallerySection & { items: GalleryItem[] };
 
@@ -91,6 +92,7 @@ function GenericSection({ section, index }: { section: GallerySectionWithItems; 
 }
 
 export default function Gallery() {
+  const defaultOgImage = useOgImage();
   const { data, isLoading } = useQuery<{ sections: GallerySectionWithItems[] }>({
     queryKey: ["/api/gallery"],
   });
@@ -105,8 +107,12 @@ export default function Gallery() {
       <meta property="og:description" content="Process photographs, finished works, and installation documentation from the studio of Creations by Oracle." />
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content="Creations by Oracle" />
+      <meta property="og:image" content={defaultOgImage} />
+      <meta property="og:url" content={typeof window !== "undefined" ? window.location.href : "/gallery"} />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Gallery — Creations by Oracle" />
+      <meta name="twitter:description" content="Process photographs, finished works, and installation documentation from the studio of Creations by Oracle." />
+      <meta name="twitter:image" content={defaultOgImage} />
       <div className="max-w-7xl mx-auto px-6 lg:px-10 pb-24 lg:pb-40">
 
         <div className="mb-16 lg:mb-20">

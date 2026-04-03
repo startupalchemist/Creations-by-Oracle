@@ -1,8 +1,10 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Palette } from "lucide-react";
+import { useOgImage } from "@/hooks/use-og-image";
 
 export default function About() {
+  const defaultOgImage = useOgImage();
   return (
     <div className="min-h-screen bg-[#08060e]" data-testid="page-about">
       <title>About the Artist — Creations by Oracle</title>
@@ -11,8 +13,12 @@ export default function About() {
       <meta property="og:description" content="Exploring abstract canvas, portraiture, and sculptural installations in copper and reclaimed materials." />
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content="Creations by Oracle" />
+      <meta property="og:image" content={defaultOgImage} />
+      <meta property="og:url" content={typeof window !== "undefined" ? window.location.href : "/about"} />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="About the Artist — Creations by Oracle" />
+      <meta name="twitter:description" content="Exploring abstract canvas, portraiture, and sculptural installations in copper and reclaimed materials." />
+      <meta name="twitter:image" content={defaultOgImage} />
 
       {/* Hero */}
       <div className="pt-32 pb-16 px-6 lg:px-10 max-w-7xl mx-auto">
