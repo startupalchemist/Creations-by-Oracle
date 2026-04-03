@@ -63,6 +63,10 @@ import {
   DollarSign,
   FlipHorizontal,
   Layers,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  AlertCircle,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import TheDyno from "@/components/the-dyno";
@@ -3757,8 +3761,398 @@ function GalleryTab({ toast }: { toast: any }) {
 
 // ─── ShopTab ──────────────────────────────────────────────────────────────────
 
+// ─── CSV helpers ─────────────────────────────────────────────────────────────
+
+const CSV_COLUMNS = ["title", "medium", "dimensions", "year", "description", "category", "price", "forSale", "featured", "imageUrl"];
+
+const VALID_CATEGORIES = ["Abstract", "Portrait", "3D Installation", "Sculpture", "Mixed Media"];
+
+function parseCSV(text: string): Record<string, string>[] {
+  const lines = text.trim().split("\n").filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  return lines.slice(1).map((line) => {
+    const values: string[] = [];
+    let cur = "";
+    let inQ = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === "," && !inQ) { values.push(cur); cur = ""; }
+      else { cur += ch; }
+    }
+    values.push(cur);
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = (values[i] || "").trim(); });
+    return row;
+  });
+}
+
+function validateCSVRow(row: Record<string, string>): string[] {
+  const errors: string[] = [];
+  if (!row.title || row.title.trim() === "") errors.push("Title is required");
+  if (row.category && !VALID_CATEGORIES.includes(row.category)) errors.push(`Category must be one of: ${VALID_CATEGORIES.join(", ")}`);
+  if (row.price && isNaN(Number(row.price))) errors.push("Price must be a number");
+  if (row.forSale && !["true", "false", ""].includes(row.forSale.toLowerCase())) errors.push("forSale must be true or false");
+  if (row.featured && !["true", "false", ""].includes(row.featured.toLowerCase())) errors.push("featured must be true or false");
+  return errors;
+}
+
+// ─── BulkImportModal ─────────────────────────────────────────────────────────
+
+function BulkImportModal({ onClose, toast }: { onClose: () => void; toast: any }) {
+  const [activeTab, setActiveTab] = useState<"csv" | "images">("csv");
+  const [csvRows, setCsvRows] = useState<{ row: Record<string, string>; errors: string[] }[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<{ count: number } | null>(null);
+  const [imageFiles, setImageFiles] = useState<{ file: File; name: string; status: "pending" | "uploading" | "done" | "error"; url?: string }[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const downloadTemplate = () => {
+    const header = CSV_COLUMNS.join(",");
+    const example = `"Crimson Tide","Acrylic on Canvas","24\\"x36\\"","2024","Abstract expressionist piece in deep reds","Abstract","1200","true","false",""`;
+    const csv = header + "\n" + example;
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "artwork-import-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const parsed = parseCSV(text);
+      const validated = parsed.map((row) => ({ row, errors: validateCSVRow(row) }));
+      setCsvRows(validated);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleImportCSV = async () => {
+    const valid = csvRows.filter((r) => r.errors.length === 0);
+    if (valid.length === 0) return;
+    setImporting(true);
+    try {
+      const artworks = valid.map((r) => ({
+        title: r.row.title,
+        medium: r.row.medium || "",
+        dimensions: r.row.dimensions || "",
+        year: r.row.year || null,
+        description: r.row.description || "",
+        category: r.row.category || "Abstract",
+        price: r.row.price || null,
+        forSale: r.row.forSale?.toLowerCase() === "true",
+        featured: r.row.featured?.toLowerCase() === "true",
+        imageUrl: r.row.imageUrl || "",
+        status: "draft",
+      }));
+      const resp = await apiRequest("POST", "/api/artworks/bulk", { artworks });
+      const json = await resp.json();
+      setResult({ count: json.created });
+      queryClient.invalidateQueries({ queryKey: ["/api/artworks"] });
+    } catch (e: any) {
+      toast({ title: "Import failed", description: e.message, variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const addImageFiles = (files: FileList | File[]) => {
+    const arr = Array.from(files).filter((f) => f.type.startsWith("image/")).slice(0, 20 - imageFiles.length);
+    setImageFiles((prev) => [...prev, ...arr.map((f) => ({ file: f, name: f.name.replace(/\.[^.]+$/, ""), status: "pending" as const }))]);
+  };
+
+  const handleImageDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) addImageFiles(e.dataTransfer.files);
+  };
+
+  const handleImageFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) addImageFiles(e.target.files);
+    e.target.value = "";
+  };
+
+  const handleImportImages = async () => {
+    if (imageFiles.length === 0) return;
+    setImporting(true);
+    const updated = [...imageFiles];
+    for (let i = 0; i < updated.length; i++) {
+      if (updated[i].status === "done") continue;
+      updated[i] = { ...updated[i], status: "uploading" };
+      setImageFiles([...updated]);
+      try {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => resolve(ev.target?.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(updated[i].file);
+        });
+        const resp = await apiRequest("POST", "/api/upload", { imageData: base64, filename: updated[i].name });
+        const { url } = await resp.json();
+        updated[i] = { ...updated[i], status: "done", url };
+        setImageFiles([...updated]);
+      } catch {
+        updated[i] = { ...updated[i], status: "error" };
+        setImageFiles([...updated]);
+      }
+    }
+    const uploaded = updated.filter((f) => f.status === "done" && f.url);
+    if (uploaded.length > 0) {
+      try {
+        const artworks = uploaded.map((f) => ({
+          title: f.name,
+          medium: "",
+          dimensions: "",
+          year: null,
+          description: "",
+          category: "Abstract",
+          price: null,
+          forSale: false,
+          featured: false,
+          imageUrl: f.url,
+          status: "draft",
+        }));
+        const resp2 = await apiRequest("POST", "/api/artworks/bulk", { artworks });
+        const json = await resp2.json();
+        setResult({ count: json.created });
+        queryClient.invalidateQueries({ queryKey: ["/api/artworks"] });
+      } catch (e: any) {
+        toast({ title: "Import failed", description: e.message, variant: "destructive" });
+      }
+    }
+    setImporting(false);
+  };
+
+  const validCount = csvRows.filter((r) => r.errors.length === 0).length;
+  const invalidCount = csvRows.filter((r) => r.errors.length > 0).length;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/80 flex items-start justify-center overflow-y-auto py-10 px-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      data-testid="modal-bulk-import-overlay"
+    >
+      <div className="w-full max-w-4xl bg-[#141416] border border-white/10 rounded-md relative" data-testid="modal-bulk-import">
+        <div className="flex items-center justify-between p-6 border-b border-white/5">
+          <div>
+            <h2 className="text-[#F5F5F7] font-medium">Bulk Import Artworks</h2>
+            <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Import up to 50 artworks via CSV or drag-and-drop images</p>
+          </div>
+          <button onClick={onClose} className="text-[#B3B3B8]/40 hover:text-[#B3B3B8]" data-testid="button-close-bulk-import">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {result ? (
+          <div className="p-12 text-center" data-testid="bulk-import-result">
+            <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-4" />
+            <h3 className="text-[#F5F5F7] text-xl font-medium mb-2">{result.count} artwork{result.count !== 1 ? "s" : ""} imported as drafts</h3>
+            <p className="text-[#B3B3B8]/50 text-sm mb-6">They've been added to your shop as drafts. Edit each one to add details and publish.</p>
+            <div className="flex items-center justify-center gap-3">
+              <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-sm" onClick={onClose} data-testid="button-view-drafts">
+                View Drafts in Shop
+              </Button>
+              <Button variant="ghost" className="text-[#B3B3B8] text-sm border border-white/10" onClick={() => { setResult(null); setCsvRows([]); setImageFiles([]); }} data-testid="button-import-more">
+                Import More
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex gap-1 p-4 border-b border-white/5">
+              {(["csv", "images"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2 rounded-sm text-xs uppercase tracking-[0.15em] transition-colors ${activeTab === tab ? "bg-[#C084FC]/20 text-[#C084FC]" : "text-[#B3B3B8]/50 hover:text-[#B3B3B8]"}`}
+                  data-testid={`bulk-tab-${tab}`}
+                >
+                  {tab === "csv" ? <><FileSpreadsheet className="w-3.5 h-3.5 inline mr-1.5" />CSV Import</> : <><Upload className="w-3.5 h-3.5 inline mr-1.5" />Image Drop</>}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-6">
+              {activeTab === "csv" ? (
+                <div className="space-y-5" data-testid="csv-import-panel">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                      variant="ghost"
+                      className="text-[#B3B3B8] border border-white/10 text-xs"
+                      onClick={downloadTemplate}
+                      data-testid="button-download-csv-template"
+                    >
+                      <Download className="w-3.5 h-3.5 mr-1.5" />Download Template CSV
+                    </Button>
+                    <label className="cursor-pointer">
+                      <Button variant="ghost" className="text-[#C084FC] border border-[#C084FC]/30 text-xs pointer-events-none" asChild>
+                        <span><FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />Upload CSV</span>
+                      </Button>
+                      <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleCSVFile} data-testid="input-csv-file" />
+                    </label>
+                  </div>
+
+                  <div className="text-[10px] text-[#B3B3B8]/40 uppercase tracking-[0.15em]">
+                    Columns: {CSV_COLUMNS.join(", ")}
+                  </div>
+
+                  {csvRows.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-green-400">{validCount} valid</span>
+                        {invalidCount > 0 && <span className="text-red-400">{invalidCount} invalid</span>}
+                        <span className="text-[#B3B3B8]/40">{csvRows.length} total rows</span>
+                      </div>
+
+                      <div className="overflow-x-auto border border-white/5 rounded-sm max-h-72 overflow-y-auto" data-testid="csv-preview-table">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-[#1A1A1E]">
+                            <tr className="border-b border-white/5">
+                              <th className="text-left py-2 px-3 text-[#B3B3B8]/50 font-medium w-6">#</th>
+                              <th className="text-left py-2 px-3 text-[#B3B3B8]/50 font-medium">Title</th>
+                              <th className="text-left py-2 px-3 text-[#B3B3B8]/50 font-medium">Category</th>
+                              <th className="text-left py-2 px-3 text-[#B3B3B8]/50 font-medium">Medium</th>
+                              <th className="text-left py-2 px-3 text-[#B3B3B8]/50 font-medium">Price</th>
+                              <th className="text-left py-2 px-3 text-[#B3B3B8]/50 font-medium">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {csvRows.map((r, i) => (
+                              <tr key={i} className={`border-b border-white/5 ${r.errors.length > 0 ? "bg-red-500/5" : ""}`} data-testid={`csv-row-${i}`}>
+                                <td className="py-2 px-3 text-[#B3B3B8]/30">{i + 1}</td>
+                                <td className="py-2 px-3">
+                                  <div className="text-[#F5F5F7] font-medium">{r.row.title || <span className="text-red-400/70 italic">missing</span>}</div>
+                                  {r.errors.length > 0 && (
+                                    <div className="flex items-start gap-1 mt-1" data-testid={`csv-row-errors-${i}`}>
+                                      <AlertCircle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
+                                      <span className="text-red-400/80 text-[10px]">{r.errors.join("; ")}</span>
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 text-[#B3B3B8]">{r.row.category || "Abstract"}</td>
+                                <td className="py-2 px-3 text-[#B3B3B8]/60">{r.row.medium || "—"}</td>
+                                <td className="py-2 px-3 text-[#B3B3B8]">{r.row.price ? `$${r.row.price}` : "—"}</td>
+                                <td className="py-2 px-3">
+                                  {r.errors.length === 0 ? (
+                                    <span className="text-green-400/70 text-[10px]">valid</span>
+                                  ) : (
+                                    <span className="text-red-400/70 text-[10px]">invalid</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Button
+                          className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs"
+                          disabled={validCount === 0 || importing}
+                          onClick={handleImportCSV}
+                          data-testid="button-confirm-csv-import"
+                        >
+                          {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <CheckCircle className="w-3.5 h-3.5 mr-1.5" />}
+                          Import {validCount} Valid Artwork{validCount !== 1 ? "s" : ""}
+                        </Button>
+                        <Button variant="ghost" className="text-[#B3B3B8] text-xs border border-white/10" onClick={() => setCsvRows([])}>
+                          Clear
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-5" data-testid="image-drop-panel">
+                  <div
+                    className={`border-2 border-dashed rounded-sm p-10 text-center transition-colors relative ${isDragging ? "border-[#C084FC]/70 bg-[#C084FC]/5" : "border-white/10 hover:border-white/20"}`}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleImageDrop}
+                    data-testid="image-drop-zone"
+                  >
+                    <Upload className="w-8 h-8 text-white/15 mx-auto mb-3" />
+                    <p className="text-[#B3B3B8]/50 text-sm mb-1">Drag & drop image files here</p>
+                    <p className="text-[#B3B3B8]/30 text-xs mb-4">JPG, PNG, WEBP — up to 20 files</p>
+                    <label className="cursor-pointer">
+                      <Button variant="ghost" className="text-[#C084FC] border border-[#C084FC]/30 text-xs pointer-events-none" asChild>
+                        <span><FileCheck className="w-3.5 h-3.5 mr-1.5" />Choose Files</span>
+                      </Button>
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageFileInput} data-testid="input-image-files" />
+                    </label>
+                    <p className="text-[#B3B3B8]/25 text-[10px] mt-3">Filename (without extension) will be used as the artwork title</p>
+                  </div>
+
+                  {imageFiles.length > 0 && (
+                    <>
+                      <div className="space-y-2 max-h-60 overflow-y-auto" data-testid="image-file-list">
+                        {imageFiles.map((f, i) => (
+                          <div key={i} className="flex items-center gap-3 p-3 bg-[#0B0B0D] border border-white/5 rounded-sm" data-testid={`image-file-${i}`}>
+                            <div className="w-8 h-8 bg-[#1a1225] rounded-sm overflow-hidden shrink-0">
+                              {f.url ? (
+                                <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <Image className="w-3 h-3 text-white/10" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[#F5F5F7] text-xs font-medium truncate">{f.name}</p>
+                              <p className="text-[#B3B3B8]/40 text-[10px]">{(f.file.size / 1024).toFixed(0)} KB</p>
+                            </div>
+                            <div className="shrink-0">
+                              {f.status === "pending" && <span className="text-[10px] text-[#B3B3B8]/40">Ready</span>}
+                              {f.status === "uploading" && <Loader2 className="w-3.5 h-3.5 text-[#C084FC] animate-spin" />}
+                              {f.status === "done" && <CheckCircle className="w-3.5 h-3.5 text-green-400" />}
+                              {f.status === "error" && <XCircle className="w-3.5 h-3.5 text-red-400" />}
+                            </div>
+                            {!importing && f.status === "pending" && (
+                              <button onClick={() => setImageFiles((prev) => prev.filter((_, j) => j !== i))} className="text-[#B3B3B8]/30 hover:text-red-400 shrink-0">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button
+                          className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs"
+                          disabled={imageFiles.length === 0 || importing}
+                          onClick={handleImportImages}
+                          data-testid="button-confirm-image-import"
+                        >
+                          {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                          Import {imageFiles.length} Image{imageFiles.length !== 1 ? "s" : ""} as Drafts
+                        </Button>
+                        {!importing && (
+                          <Button variant="ghost" className="text-[#B3B3B8] text-xs border border-white/10" onClick={() => setImageFiles([])}>
+                            Clear
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ShopTab({ toast }: { toast: any }) {
   const [showCreate, setShowCreate] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [enhancing, setEnhancing] = useState(false);
@@ -3858,9 +4252,14 @@ function ShopTab({ toast }: { toast: any }) {
           <h2 className="text-lg font-medium text-[#F5F5F7]">Artwork Manager</h2>
           <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Create, edit, and publish original works for sale</p>
         </div>
-        <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs" onClick={() => { resetForm(); setShowCreate(true); }} data-testid="button-create-artwork">
-          <Plus className="w-3.5 h-3.5 mr-1.5" />Add Artwork
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" className="text-[#B3B3B8] border border-white/10 text-xs" onClick={() => setShowBulkImport(true)} data-testid="button-bulk-import">
+            <Upload className="w-3.5 h-3.5 mr-1.5" />Bulk Import
+          </Button>
+          <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs" onClick={() => { resetForm(); setShowCreate(true); }} data-testid="button-create-artwork">
+            <Plus className="w-3.5 h-3.5 mr-1.5" />Add Artwork
+          </Button>
+        </div>
       </div>
 
       {(showCreate || editingId !== null) && (
@@ -4045,6 +4444,8 @@ function ShopTab({ toast }: { toast: any }) {
           ))}
         </div>
       )}
+
+      {showBulkImport && <BulkImportModal onClose={() => setShowBulkImport(false)} toast={toast} />}
     </div>
   );
 }

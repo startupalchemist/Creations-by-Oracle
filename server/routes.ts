@@ -1987,6 +1987,62 @@ Generate only the requested fields. Respond in this exact JSON format:
     }
   });
 
+  app.post("/api/artworks/bulk", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
+    try {
+      const { artworks: items } = req.body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "artworks array is required" });
+      }
+      if (items.length > 50) {
+        return res.status(400).json({ message: "Maximum 50 artworks per request" });
+      }
+      const bulkSchema = z.array(
+        insertArtworkSchema.extend({
+          title: z.string().min(1),
+          category: z.enum(artworkCategories).optional().default("Abstract"),
+          forSale: z.boolean().optional().default(false),
+          featured: z.boolean().optional().default(false),
+          status: z.enum(artworkStatuses).optional().default("draft"),
+        })
+      );
+      const parsed = bulkSchema.safeParse(items);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parsed.error.errors });
+      }
+      const created = [];
+      for (const item of parsed.data) {
+        let slug = slugify(item.title);
+        const existing = await storage.getArtworkBySlug(slug);
+        if (existing) slug = slug + "-" + Date.now().toString(36);
+        const artwork = await storage.createArtwork({
+          title: item.title,
+          slug,
+          medium: item.medium || "",
+          dimensions: item.dimensions || "",
+          year: item.year || null,
+          description: item.description || "",
+          imageUrl: item.imageUrl || "",
+          enhancedImageUrl: null,
+          price: item.price ? String(item.price) : null,
+          forSale: item.forSale ?? false,
+          sold: false,
+          status: (item.status as string) || "draft",
+          category: item.category || "Abstract",
+          featured: item.featured ?? false,
+          seoTitle: null,
+          seoDescription: null,
+          seoKeywords: [],
+          publishedAt: null,
+        });
+        created.push(artwork);
+      }
+      res.status(201).json({ created: created.length, artworks: created });
+    } catch (e: any) {
+      console.error("Bulk artwork import error:", e?.message);
+      res.status(500).json({ message: "Failed to bulk import artworks" });
+    }
+  });
+
   app.post("/api/artworks", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
       const { title, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, category, featured, seoTitle, seoDescription, seoKeywords } = req.body;
