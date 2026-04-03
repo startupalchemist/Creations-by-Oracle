@@ -378,9 +378,10 @@ export async function registerRoutes(
       for (const f of fields) {
         if (req.body[f] !== undefined) updates[f] = req.body[f];
       }
+      let existingPost: Awaited<ReturnType<typeof storage.getPostById>> | undefined;
       if (updates.status === "published") {
-        const existing = await storage.getPostById(id);
-        if (existing && !existing.publishedAt) {
+        existingPost = await storage.getPostById(id);
+        if (existingPost && !existingPost.publishedAt) {
           updates.publishedAt = new Date();
         }
       }
@@ -394,6 +395,28 @@ export async function registerRoutes(
       const post = await storage.updatePost(id, updates);
       if (!post) {
         return res.status(404).json({ message: "Post not found" });
+      }
+      // Auto-register in pageRegistry when transitioning to published
+      if (updates.status === "published" && existingPost && !existingPost.publishedAt) {
+        try {
+          const blogSlug = `blog/${post.slug}`;
+          const existingPage = await storage.getPageBySlug(blogSlug);
+          if (!existingPage) {
+            await storage.createPage({
+              slug: blogSlug,
+              title: post.title,
+              pageType: "blog",
+              seoTitle: post.seoTitle || post.title,
+              seoDescription: post.seoDescription || post.excerpt || "",
+              seoKeywords: post.seoKeywords || [],
+              status: "published",
+              linkedEntityId: id,
+              linkedEntityType: "post",
+            });
+          }
+        } catch (e: any) {
+          console.error("Page registry auto-create error:", e?.message);
+        }
       }
       res.json(post);
     } catch {
@@ -813,6 +836,27 @@ Respond in JSON format:
       const updated = await storage.updatePost(id, { status: "published", publishedAt: new Date() });
       res.json(updated);
       fireWebhooks("post.published", { id: post.id, title: post.title, slug: post.slug, excerpt: post.excerpt, tags: post.tags, publishedAt: new Date().toISOString() });
+
+      // Auto-register published blog post in pageRegistry for sitemap inclusion
+      try {
+        const blogSlug = `blog/${post.slug}`;
+        const existingPage = await storage.getPageBySlug(blogSlug);
+        if (!existingPage) {
+          await storage.createPage({
+            slug: blogSlug,
+            title: post.title,
+            pageType: "blog",
+            seoTitle: post.seoTitle || post.title,
+            seoDescription: post.seoDescription || post.excerpt || "",
+            seoKeywords: post.seoKeywords || [],
+            status: "published",
+            linkedEntityId: id,
+            linkedEntityType: "post",
+          });
+        }
+      } catch (e: any) {
+        console.error("Page registry auto-create error:", e?.message);
+      }
 
       (async () => {
         try {
