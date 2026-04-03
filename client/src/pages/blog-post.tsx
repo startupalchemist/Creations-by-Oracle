@@ -132,10 +132,15 @@ export default function BlogPost() {
     if (postTags.length === 0) return [];
     const scored = allArtworks.map((a) => {
       let score = 0;
-      const artTags = [a.category || "", a.medium || "", ...(a.seoKeywords || [])].map(s => s.toLowerCase());
+      const category = (a.category || "").toLowerCase();
+      const medium = (a.medium || "").toLowerCase();
+      const keywords = (a.seoKeywords || []).map(s => s.toLowerCase());
       for (const tag of postTags) {
-        for (const artTag of artTags) {
-          if (artTag && (artTag.includes(tag) || tag.includes(artTag))) score++;
+        // Category match scores highest (same topic/medium as post)
+        if (category && (category.includes(tag) || tag.includes(category))) score += 3;
+        if (medium && (medium.includes(tag) || tag.includes(medium))) score += 2;
+        for (const kw of keywords) {
+          if (kw && (kw.includes(tag) || tag.includes(kw))) score += 1;
         }
       }
       return { artwork: a, score };

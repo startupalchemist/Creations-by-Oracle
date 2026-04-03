@@ -687,11 +687,23 @@ Respond in JSON format:
           const blogServices: { title: string; description: string }[] = (() => { try { return blogServicesRaw ? JSON.parse(blogServicesRaw) : []; } catch { return []; } })();
           const activeServices = blogServices.length > 0
             ? blogServices.map((s) => s.title + (s.description ? `: ${s.description}` : "")).join("; ")
-            : "Custom Turf Design & Install; Foundation Repair; Interior Remodeling; Outdoor Remodeling; Bespoke Outdoor Living Spaces; Turf & Pavers";
+            : "Abstract Canvas Painting; Life-like Portraiture; 3D Art Installations; Copper Sculptures; Mixed Media";
 
-          const articlePrompt = `You are an expert renovation content writer for Reign Services, DFW's premier interior and exterior renovation contractor in Dallas, TX.
+          // Fetch published artworks filtered by topic category for category-aware linking
+          const publishedArtworks = await storage.getArtworks("published");
+          const topicKeywords = (topic.targetKeywords || []).map((k: string) => k.toLowerCase());
+          const categoryArtworks = publishedArtworks.filter((a) => {
+            const artTags = [a.category || "", a.medium || "", ...(a.seoKeywords || [])].map(s => s.toLowerCase());
+            return topicKeywords.some(kw => artTags.some(at => at.includes(kw) || kw.includes(at)));
+          });
+          const linkCandidates = (categoryArtworks.length > 0 ? categoryArtworks : publishedArtworks).slice(0, 6);
+          const artworkLinksBlock = linkCandidates.map((a) =>
+            `"${a.title}" (/shop/${a.slug}) — ${a.category || ""}${a.medium ? `, ${a.medium}` : ""}`
+          ).join("\n");
 
-Active services offered by Reign Services: ${activeServices}
+          const articlePrompt = `You are an expert art writer and content strategist for Creations by Oracle, an independent contemporary artist.
+
+Artist's mediums and focus areas: ${activeServices}
 
 Write a comprehensive, SEO-optimized blog article based on this research:
 Topic: ${topic.title}
@@ -699,16 +711,16 @@ Overview: ${topic.overview}
 Target Keywords: ${(topic.targetKeywords || []).join(", ")}
 Search Intent: ${topic.searchIntent || "informational"}
 
+${artworkLinksBlock ? `Artworks available for inline linking (prefer category-matching ones — link 1–2 when contextually relevant):\n${artworkLinksBlock}\n` : ""}
 Rules:
-- Write in a controlled, confident tone. No exclamation points. No sales hype.
+- Write in a thoughtful, evocative tone. No exclamation points. No sales hype.
 - Naturally incorporate target keywords throughout the content
-- Use substantive, factual content with specific details about renovation techniques, material selection, and project execution
-- Target Dallas-Fort Worth market when relevant
+- Use substantive, specific content about art techniques, materials, artistic intent, and the viewer's experience
 - Structure with H2 and H3 headings using markdown
 - Minimum 1000 words
-- Only reference services from the active services list above when making internal links
-- Include internal links using proper markdown link syntax: [link text](/path). For example: [our services](/services), [contact us](/contact). Do NOT output raw URLs or bare paths.
-- End with a subtle call-to-action that encourages booking a free assessment with Reign Services
+- Include internal links using proper markdown link syntax: [link text](/path). For example: [view the gallery](/gallery), [shop original works](/shop), [contact for commissions](/contact). Do NOT output raw URLs or bare paths.
+- When contextually natural, link to 1-2 artworks from the list above using [artwork title](/shop/slug) syntax
+- End with a subtle call-to-action for commissions or visiting the shop
 
 Respond in JSON format:
 {
@@ -878,7 +890,7 @@ Respond in JSON:
 <h1 style="font-size:24px;margin-bottom:16px;">${post.title}</h1>
 ${post.excerpt ? `<p style="color:#B3B3B8;font-size:16px;line-height:1.6;margin-bottom:24px;">${post.excerpt}</p>` : ""}
 <a href="${articleLink}" style="display:inline-block;background:#5D3FD3;color:white;padding:12px 32px;text-decoration:none;font-size:14px;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;">Read Full Article</a>
-<p style="color:#B3B3B8;font-size:12px;margin-top:40px;">Reign Services - DFW's Premier Interior/Exterior Renovations Experts</p>
+<p style="color:#B3B3B8;font-size:12px;margin-top:40px;">Creations by Oracle</p>
 </div>`;
 
             const newsletter = await storage.createNewsletter({ subject: nlSubject, htmlContent: nlHtml });
@@ -1277,7 +1289,7 @@ Respond in JSON format:
 
       const testPayload = {
         event: "webhook.test",
-        data: { message: "This is a test webhook delivery from Reign Services CRM", timestamp: new Date().toISOString() },
+        data: { message: "This is a test webhook delivery from Creations by Oracle CRM", timestamp: new Date().toISOString() },
         timestamp: new Date().toISOString(),
       };
       const body = JSON.stringify(testPayload);
@@ -1729,7 +1741,7 @@ Respond in JSON format:
       if (generatePricing) parts.push("pricing");
       if (generateKeyDetails) parts.push("keyDetails");
 
-      const systemPrompt = `You are a marketing copywriter for Reign Services, DFW's premier interior and exterior renovation contractor. Write professional, confident, conversion-focused service copy. No exclamation points. No hype. Use clear, specific language. Target the Dallas-Fort Worth market.`;
+      const systemPrompt = `You are a marketing copywriter for Creations by Oracle, an independent contemporary artist. Write professional, confident copy about art services and offerings. No exclamation points. No hype. Use clear, evocative language.`;
 
       const userPrompt = `Write marketing copy for the following service: "${serviceTitle}"
 ${description ? `Current description for context: ${description}` : ""}
@@ -2245,11 +2257,11 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
       const staticPages = [
         { loc: "/", priority: "1.0", changefreq: "weekly" },
-        { loc: "/shop", priority: "0.9", changefreq: "daily" },
+        { loc: "/shop", priority: "0.8", changefreq: "daily" },
         { loc: "/gallery", priority: "0.6", changefreq: "weekly" },
         { loc: "/about", priority: "0.6", changefreq: "monthly" },
         { loc: "/blog", priority: "0.7", changefreq: "daily" },
-        { loc: "/contact", priority: "0.5", changefreq: "monthly" },
+        { loc: "/contact", priority: "0.6", changefreq: "monthly" },
       ];
 
       const pages = await storage.getPageRegistry();
@@ -2296,7 +2308,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       : "http://localhost:5000";
 
     res.set("Content-Type", "text/plain");
-    res.send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\n\nSitemap: ${baseUrl}/sitemap.xml\n`);
+    res.send(`User-agent: *\nAllow: /\n\nSitemap: ${baseUrl}/sitemap.xml\n`);
   });
 
   // ─── Stripe Checkout ──────────────────────────────────────────
