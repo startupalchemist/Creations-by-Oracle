@@ -2,9 +2,10 @@ import { useEffect, useRef } from "react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Share2, Eye } from "lucide-react";
+import { ArrowLeft, Loader2, Share2, Eye, Palette, ArrowRight } from "lucide-react";
 import { SiX, SiFacebook, SiLinkedin } from "react-icons/si";
 import { apiRequest } from "@/lib/queryClient";
+import type { Artwork } from "@shared/schema";
 
 interface Post {
   id: number;
@@ -118,6 +119,30 @@ export default function BlogPost() {
     enabled: !!slug,
   });
 
+  const { data: allArtworks } = useQuery<Artwork[]>({
+    queryKey: ["/api/artworks", "published"],
+    queryFn: () => fetch("/api/artworks?status=published").then(r => r.json()),
+  });
+
+  const relatedArtworks = (() => {
+    if (!post || !allArtworks || allArtworks.length === 0) return [];
+    const postTags = (post.tags || []).map((t: string) => t.toLowerCase());
+    const scored = allArtworks.map((a) => {
+      let score = 0;
+      const artTags = [a.category || "", a.medium || ""].map(s => s.toLowerCase());
+      for (const tag of postTags) {
+        for (const artTag of artTags) {
+          if (artTag.includes(tag) || tag.includes(artTag)) score++;
+        }
+      }
+      return { artwork: a, score };
+    });
+    return scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map(s => s.artwork);
+  })();
+
   useEffect(() => {
     if (!post || readTracked.current) return;
     readTracked.current = true;
@@ -126,7 +151,7 @@ export default function BlogPost() {
 
   useEffect(() => {
     if (!post) return;
-    document.title = post.seoTitle || `${post.title} | Reign Services`;
+    document.title = post.seoTitle || `${post.title} | Creations by Oracle`;
     const setMeta = (name: string, content: string) => {
       let el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
       if (!el) { el = document.createElement("meta"); el.name = name; document.head.appendChild(el); }
@@ -144,6 +169,12 @@ export default function BlogPost() {
     setOg("og:description", post.excerpt || post.seoDescription || "");
     setOg("og:type", "article");
     setOg("og:url", window.location.href);
+    setOg("og:site_name", "Creations by Oracle");
+    setOg("og:image", "/og-image.png");
+    setMeta("twitter:card", "summary_large_image");
+    setMeta("twitter:title", post.seoTitle || post.title);
+    setMeta("twitter:description", post.excerpt || post.seoDescription || "");
+    setMeta("twitter:image", "/og-image.png");
 
     let ldEl = document.querySelector('script[data-blog-ld]') as HTMLScriptElement | null;
     if (!ldEl) { ldEl = document.createElement("script"); ldEl.type = "application/ld+json"; ldEl.setAttribute("data-blog-ld", "true"); document.head.appendChild(ldEl); }
@@ -154,17 +185,23 @@ export default function BlogPost() {
       description: post.excerpt || post.seoDescription || "",
       datePublished: post.publishedAt,
       ...(post.seoKeywords?.length ? { keywords: post.seoKeywords.join(", ") } : {}),
-      publisher: { "@type": "Organization", name: "Reign Services" },
+      publisher: { "@type": "Organization", name: "Creations by Oracle" },
     });
 
     return () => {
-      document.title = "Reign Services";
+      document.title = "Creations by Oracle — Original Art";
       document.querySelector('meta[name="description"]')?.remove();
       document.querySelector('meta[name="keywords"]')?.remove();
       document.querySelector('meta[property="og:title"]')?.remove();
       document.querySelector('meta[property="og:description"]')?.remove();
       document.querySelector('meta[property="og:type"]')?.remove();
       document.querySelector('meta[property="og:url"]')?.remove();
+      document.querySelector('meta[property="og:site_name"]')?.remove();
+      document.querySelector('meta[property="og:image"]')?.remove();
+      document.querySelector('meta[name="twitter:card"]')?.remove();
+      document.querySelector('meta[name="twitter:title"]')?.remove();
+      document.querySelector('meta[name="twitter:description"]')?.remove();
+      document.querySelector('meta[name="twitter:image"]')?.remove();
       document.querySelector('script[data-blog-ld]')?.remove();
     };
   }, [post]);
@@ -280,14 +317,54 @@ export default function BlogPost() {
           dangerouslySetInnerHTML={{ __html: renderMarkdown(post.content) }}
         />
 
+        {relatedArtworks.length > 0 && (
+          <div className="mt-16 pt-12 border-t border-white/5">
+            <span className="text-[10px] uppercase tracking-[0.3em] text-[#C084FC]/50 block mb-3">From the Shop</span>
+            <h3 className="text-xl font-light text-white mb-8" style={{ fontFamily: "Georgia, serif" }}>Related Works</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              {relatedArtworks.map((artwork) => (
+                <Link key={artwork.id} href={`/shop/${artwork.slug}`}>
+                  <div className="group cursor-pointer" data-testid={`related-artwork-${artwork.id}`}>
+                    <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-[#1a1225] mb-3">
+                      {artwork.enhancedImageUrl || artwork.imageUrl ? (
+                        <img
+                          src={artwork.enhancedImageUrl || artwork.imageUrl}
+                          alt={artwork.title}
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Palette className="w-6 h-6 text-white/10" />
+                        </div>
+                      )}
+                      {artwork.sold && (
+                        <div className="absolute top-2 left-2 bg-black/70 text-[#F5F5F7]/60 text-[9px] uppercase tracking-[0.2em] px-2 py-0.5 rounded-sm">Sold</div>
+                      )}
+                    </div>
+                    <p className="text-[#B3B3B8]/40 text-[9px] uppercase tracking-[0.2em] mb-0.5">{artwork.category}</p>
+                    <h4 className="text-[#F5F5F7] text-sm group-hover:text-[#C084FC] transition-colors">{artwork.title}</h4>
+                    {artwork.price && artwork.forSale && !artwork.sold && (
+                      <p className="text-[#C084FC] text-xs mt-0.5">${parseFloat(String(artwork.price)).toLocaleString()}</p>
+                    )}
+                    <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.15em] text-[#C084FC]/40 group-hover:text-[#C084FC] transition-colors mt-2">
+                      View Work <ArrowRight className="w-3 h-3" />
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-16 pt-8 border-t border-white/5">
           <div className="flex flex-wrap items-center justify-between gap-6">
-            <Link href="/contact?utm_source=blog&utm_medium=post_cta&utm_campaign=blog">
+            <Link href="/contact?utm_source=blog&utm_medium=post_cta&utm_campaign=commission">
               <Button
-                className="bg-[#5D3FD3] hover:bg-[#4a32a8] text-white border-0 text-xs uppercase tracking-[0.15em] font-semibold px-8"
+                className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.15em] font-semibold px-8"
                 data-testid="button-post-cta"
               >
-                Book Free Assessment
+                Commission a Piece
               </Button>
             </Link>
 

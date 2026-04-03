@@ -5,8 +5,14 @@ import { ArrowRight, Palette } from "lucide-react";
 export default function About() {
   return (
     <div className="min-h-screen bg-[#08060e]" data-testid="page-about">
-      <title>About the Artist — Studio</title>
-      <meta name="description" content="Learn about the artist behind Studio — exploring abstract canvas, portraiture, and sculptural installations in copper and reclaimed materials." />
+      <title>About the Artist — Creations by Oracle</title>
+      <meta name="description" content="Learn about Creations by Oracle — exploring abstract canvas, portraiture, and sculptural installations in copper and reclaimed materials." />
+      <meta property="og:title" content="About the Artist — Creations by Oracle" />
+      <meta property="og:description" content="Exploring abstract canvas, portraiture, and sculptural installations in copper and reclaimed materials." />
+      <meta property="og:type" content="website" />
+      <meta property="og:site_name" content="Creations by Oracle" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="About the Artist — Creations by Oracle" />
 
       {/* Hero */}
       <div className="pt-32 pb-16 px-6 lg:px-10 max-w-7xl mx-auto">

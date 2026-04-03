@@ -56,6 +56,43 @@ export default function ArtworkPage() {
     }
   }, [artwork, slug, sessionId]);
 
+  useEffect(() => {
+    if (!artwork) return;
+    const title = artwork.seoTitle || artwork.title;
+    const desc = artwork.seoDescription || (artwork.description ? artwork.description.substring(0, 155) : "");
+    const image = artwork.enhancedImageUrl || artwork.imageUrl || "";
+    const url = window.location.href;
+
+    document.title = `${title} — Creations by Oracle`;
+
+    const setMeta = (name: string, content: string) => {
+      let el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
+      if (!el) { el = document.createElement("meta"); el.name = name; document.head.appendChild(el); }
+      el.content = content;
+    };
+    const setOg = (prop: string, content: string) => {
+      let el = document.querySelector(`meta[property="${prop}"]`) as HTMLMetaElement | null;
+      if (!el) { el = document.createElement("meta"); el.setAttribute("property", prop); document.head.appendChild(el); }
+      el.content = content;
+    };
+
+    if (desc) setMeta("description", desc);
+    setOg("og:title", title);
+    setOg("og:description", desc);
+    setOg("og:image", image);
+    setOg("og:type", "product");
+    setOg("og:url", url);
+    setOg("og:site_name", "Creations by Oracle");
+    setMeta("twitter:card", "summary_large_image");
+    setMeta("twitter:title", title);
+    setMeta("twitter:description", desc);
+    setMeta("twitter:image", image);
+
+    return () => {
+      document.title = "Creations by Oracle — Original Art";
+    };
+  }, [artwork]);
+
   const checkoutMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", "/api/checkout", {
@@ -110,8 +147,6 @@ export default function ArtworkPage() {
 
   return (
     <div className="min-h-screen bg-[#08060e]" data-testid="page-artwork">
-      <title>{artwork.seoTitle || artwork.title} — Studio</title>
-      {artwork.seoDescription && <meta name="description" content={artwork.seoDescription} />}
 
       {purchased && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-[#C084FC] text-white px-6 py-3 rounded-sm flex items-center gap-2 shadow-xl" data-testid="banner-purchased">

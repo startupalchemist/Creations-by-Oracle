@@ -367,7 +367,15 @@ function CommissionCTASection() {
 export default function Home() {
   return (
     <div data-testid="page-home">
-      <title>Studio — Original Art | Abstract, Portraits & Sculpture</title>
+      <title>Creations by Oracle — Original Art | Abstract, Portraits & Sculpture</title>
+      <meta name="description" content="Creations by Oracle — original abstract canvas works, life-like portraits, 3D art installations, and copper sculptures. Commissions welcome." />
+      <meta property="og:title" content="Creations by Oracle — Original Art" />
+      <meta property="og:description" content="Original abstract canvas works, life-like portraits, 3D art installations, and copper sculptures. Commissions welcome." />
+      <meta property="og:type" content="website" />
+      <meta property="og:site_name" content="Creations by Oracle" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="Creations by Oracle — Original Art" />
+      <meta name="twitter:description" content="Original abstract canvas works, life-like portraits, 3D art installations, and copper sculptures. Commissions welcome." />
       <HeroSection />
       <MediumsSection />
       <FeaturedWorksSection />

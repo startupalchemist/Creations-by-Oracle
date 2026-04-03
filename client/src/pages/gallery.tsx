@@ -99,6 +99,14 @@ export default function Gallery() {
 
   return (
     <div className="bg-[#0B0B0D] min-h-screen pt-24 lg:pt-32">
+      <title>Gallery — Creations by Oracle</title>
+      <meta name="description" content="Process photographs, finished works, and installation documentation from the studio of Creations by Oracle." />
+      <meta property="og:title" content="Gallery — Creations by Oracle" />
+      <meta property="og:description" content="Process photographs, finished works, and installation documentation from the studio of Creations by Oracle." />
+      <meta property="og:type" content="website" />
+      <meta property="og:site_name" content="Creations by Oracle" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="Gallery — Creations by Oracle" />
       <div className="max-w-7xl mx-auto px-6 lg:px-10 pb-24 lg:pb-40">
 
         <div className="mb-16 lg:mb-20">

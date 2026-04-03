@@ -97,7 +97,14 @@ export default function Shop() {
 
   return (
     <div className="min-h-screen bg-[#08060e]" data-testid="page-shop">
-      <title>Shop Original Art — Studio</title>
+      <title>Shop Original Art — Creations by Oracle</title>
+      <meta name="description" content="Browse and purchase original artworks by Creations by Oracle — abstract canvas, portraits, 3D installations, and copper sculptures." />
+      <meta property="og:title" content="Shop Original Art — Creations by Oracle" />
+      <meta property="og:description" content="Browse and purchase original artworks by Creations by Oracle — abstract canvas, portraits, 3D installations, and copper sculptures." />
+      <meta property="og:type" content="website" />
+      <meta property="og:site_name" content="Creations by Oracle" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="Shop Original Art — Creations by Oracle" />
 
       {/* Header */}
       <div className="pt-32 pb-12 px-6 lg:px-10 max-w-7xl mx-auto">

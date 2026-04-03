@@ -447,13 +447,19 @@ export async function registerRoutes(
 
       const job = await storage.createAiJob({ type: "article", input: JSON.stringify({ topic, keywords, tone }) });
 
+      // Fetch published artworks to include shop links in generated articles
+      const publishedArtworks = await storage.getArtworks("published");
+      const artworkLinks = publishedArtworks.slice(0, 12).map((a) => `"${a.title}" (/shop/${a.slug}) — ${a.category || ""}${a.medium ? `, ${a.medium}` : ""}`).join("\n");
+
       const systemPrompt = `You are an expert art writer and content strategist for an independent contemporary artist. Write authoritative, eloquent blog articles about art, the creative process, and the artist's work. Context about the artist's mediums: ${servicesContext}.
 
+${artworkLinks ? `Available artworks in the shop (link to 1-2 when contextually relevant):\n${artworkLinks}\n` : ""}
 Rules:
 - Write in a thoughtful, evocative tone. No hype. No exclamation points.
 - Use substantive, specific content about art techniques, materials, artistic intent, and the viewer's experience.
 - Structure with H2 and H3 headings using markdown.
 - Include internal links using proper markdown link syntax: [link text](/path). For example: [view the gallery](/gallery), [shop original works](/shop), [contact for commissions](/contact). Do NOT output raw URLs or bare paths.
+- When relevant, link naturally to 1-2 specific artworks from the list above using [artwork title](/shop/slug) syntax — only when it fits naturally in context.
 - Include a compelling excerpt (2 sentences max).
 - Suggest 3-5 relevant tags.
 - Suggest an SEO title (60 chars max) and meta description (155 chars max).
@@ -2210,6 +2216,74 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
     } catch {
       res.status(500).json({ message: "Failed to delete page" });
     }
+  });
+
+  // ─── Sitemap & Robots ─────────────────────────────────────────
+
+  app.get("/sitemap.xml", async (req, res) => {
+    try {
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DEPLOYMENT_URL
+        ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+        : "http://localhost:5000";
+
+      const now = new Date().toISOString().split("T")[0];
+
+      const staticPages = [
+        { loc: "/", priority: "1.0", changefreq: "weekly" },
+        { loc: "/shop", priority: "0.9", changefreq: "daily" },
+        { loc: "/gallery", priority: "0.6", changefreq: "weekly" },
+        { loc: "/about", priority: "0.6", changefreq: "monthly" },
+        { loc: "/blog", priority: "0.7", changefreq: "daily" },
+        { loc: "/contact", priority: "0.5", changefreq: "monthly" },
+      ];
+
+      const pages = await storage.getPageRegistry();
+      const dynamicEntries: { loc: string; lastmod: string; priority: string; changefreq: string }[] = [];
+
+      for (const page of pages) {
+        if (page.status !== "published") continue;
+        let priority = "0.6";
+        let changefreq = "weekly";
+        if (page.pageType === "artwork") {
+          priority = "0.8";
+          changefreq = "monthly";
+        } else if (page.pageType === "post") {
+          priority = "0.7";
+          changefreq = "monthly";
+        }
+        dynamicEntries.push({
+          loc: `/${page.slug}`,
+          lastmod: (page.updatedAt || page.createdAt).toISOString().split("T")[0],
+          priority,
+          changefreq,
+        });
+      }
+
+      const urls = [
+        ...staticPages.map((p) => `  <url>\n    <loc>${baseUrl}${p.loc}</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`),
+        ...dynamicEntries.map((p) => `  <url>\n    <loc>${baseUrl}${p.loc}</loc>\n    <lastmod>${p.lastmod}</lastmod>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`),
+      ];
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;
+
+      res.set("Content-Type", "application/xml");
+      res.send(xml);
+    } catch (e: any) {
+      res.status(500).send("Failed to generate sitemap");
+    }
+  });
+
+  app.get("/robots.txt", (_req, res) => {
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : process.env.REPLIT_DEPLOYMENT_URL
+      ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+      : "http://localhost:5000";
+
+    res.set("Content-Type", "text/plain");
+    res.send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\n\nSitemap: ${baseUrl}/sitemap.xml\n`);
   });
 
   // ─── Stripe Checkout ──────────────────────────────────────────

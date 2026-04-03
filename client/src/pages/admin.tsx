@@ -2277,7 +2277,7 @@ function BlogSettingsSubTab({ toast, user }: { toast: any; user: { role: string 
           <h3 className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 font-medium">Blog Services Context</h3>
         </div>
         <p className="text-xs text-[#B3B3B8]/40 mb-6">
-          These services are injected into the AI research and writing agents so every generated article stays aligned with what Reign Services actually offers.
+          These topics are injected into the AI research and writing agents so every generated article stays aligned with what Creations by Oracle creates and offers.
         </p>
 
         <div className="relative mb-4" data-testid="autocomplete-services">
@@ -2408,19 +2408,12 @@ interface PageSeo { page: string; route: string; title: string; description: str
 interface SeoKeyword { id: string; keyword: string; priority: "high" | "medium" | "low"; status: "tracking" | "ranking" | "testing" | "paused"; notes: string; }
 
 const DEFAULT_PAGES: PageSeo[] = [
-  { page: "Home", route: "/", title: "Reign Services - DFW's Premier Interior/Exterior Renovations Experts", description: "Residential and commercial renovation specialists serving the Dallas-Fort Worth metroplex.", keywords: "custom turf DFW, renovation contractor Dallas" },
-  { page: "About", route: "/about", title: "About Reign Services | DFW Renovation Experts", description: "Meet the Reign Services team — DFW's premier renovation contractor for residential and commercial projects.", keywords: "about Reign Services, DFW contractor" },
-  { page: "Contact", route: "/contact", title: "Contact Reign Services | Free Assessment | DFW", description: "Book your free on-site assessment. Our team serves all of Dallas-Fort Worth.", keywords: "contact Reign Services, free assessment DFW" },
-  { page: "Services", route: "/services", title: "Renovation Services | Reign Services DFW", description: "Custom turf, foundation repair, interior and outdoor remodeling, outdoor living spaces, and turf & pavers.", keywords: "renovation services DFW, turf and pavers, outdoor living" },
-  { page: "Gallery", route: "/gallery", title: "Project Gallery | Reign Services", description: "Real projects across DFW — from backyard turf transformations to commercial installations.", keywords: "turf gallery DFW, renovation photos, outdoor living gallery" },
-  { page: "Custom Turf Design & Install", route: "/custom-turf-install", title: "Custom Turf Design & Install | Reign Services DFW", description: "Bespoke artificial turf installations for residential and commercial properties across DFW.", keywords: "custom turf install DFW, artificial turf contractor, turf design Dallas" },
-  { page: "Foundation Repair", route: "/foundation-repair", title: "Foundation Repair | Reign Services DFW", description: "Expert foundation repair services for homes and commercial properties across Dallas-Fort Worth.", keywords: "foundation repair DFW, foundation contractor Dallas" },
-  { page: "Interior Remodeling", route: "/interior-remodeling", title: "Interior Remodeling | Reign Services DFW", description: "Complete interior renovation services across the Dallas-Fort Worth metroplex.", keywords: "interior remodeling DFW, home renovation Dallas" },
-  { page: "Outdoor Remodeling", route: "/outdoor-remodeling", title: "Outdoor Remodeling | Reign Services DFW", description: "Transform your outdoor spaces with Reign Services — professional outdoor remodeling across DFW.", keywords: "outdoor remodeling DFW, backyard renovation Dallas" },
-  { page: "Outdoor Living Spaces", route: "/outdoor-living", title: "Bespoke Outdoor Living Spaces | Reign Services DFW", description: "Custom outdoor living spaces — pergolas, covered patios, kitchens, and more across DFW.", keywords: "outdoor living spaces DFW, pergola contractor Dallas" },
-  { page: "Turf & Pavers", route: "/turf-and-pavers", title: "Turf & Pavers | Reign Services DFW", description: "Premium turf and paver installations for pools, patios, and commercial properties across Dallas-Fort Worth.", keywords: "turf and pavers DFW, paver contractor Dallas" },
-  { page: "Blog", route: "/blog", title: "Blog | Reign Services - DFW Renovation Tips", description: "Expert renovation tips, project spotlights, and industry insights from the Reign Services team.", keywords: "DFW renovation blog, turf tips, outdoor living ideas" },
-  { page: "FAQ", route: "/faq", title: "FAQ | Reign Services DFW", description: "Answers to your most common questions about our renovation services and free assessment process.", keywords: "Reign Services FAQ, renovation questions DFW" },
+  { page: "Home", route: "/", title: "Creations by Oracle — Original Art | Abstract, Portraits & Sculpture", description: "Original abstract canvas works, life-like portraits, 3D art installations, and copper sculptures. Commissions welcome.", keywords: "abstract art, original paintings, copper sculpture, art commissions" },
+  { page: "About", route: "/about", title: "About — Creations by Oracle", description: "Learn about the artist behind Creations by Oracle — process, inspiration, and vision.", keywords: "about Creations by Oracle, artist biography" },
+  { page: "Contact", route: "/contact", title: "Contact & Commissions — Creations by Oracle", description: "Commission a piece or inquire about available works. Reach out to Creations by Oracle.", keywords: "art commissions, contact artist, commission painting" },
+  { page: "Shop", route: "/shop", title: "Shop — Creations by Oracle", description: "Browse original paintings, sculptures, and prints available for purchase.", keywords: "buy original art, art for sale, paintings for sale" },
+  { page: "Gallery", route: "/gallery", title: "Gallery — Creations by Oracle", description: "A curated view of the full portfolio from Creations by Oracle.", keywords: "art gallery, portfolio, abstract art gallery" },
+  { page: "Blog", route: "/blog", title: "Blog — Creations by Oracle", description: "Art insights, process notes, and creative reflections from Creations by Oracle.", keywords: "art blog, creative process, studio notes" },
 ];
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -2556,7 +2549,7 @@ function SeoTab({ toast, userRole }: { toast: any; userRole: string }) {
               value={globalForm.siteTitle}
               onChange={e => setGlobalForm(f => ({ ...f, siteTitle: e.target.value }))}
               disabled={!isRoot}
-              placeholder="Reign Services - DFW's Premier Interior/Exterior Renovations Experts"
+              placeholder="Creations by Oracle — Original Art | Abstract, Portraits &amp; Sculpture"
               className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
               data-testid="input-seo-site-title"
             />
