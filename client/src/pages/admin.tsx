@@ -3799,7 +3799,7 @@ function validateCSVRow(row: Record<string, string>): string[] {
 
 // ─── BulkImportModal ─────────────────────────────────────────────────────────
 
-function BulkImportModal({ onClose, toast }: { onClose: () => void; toast: any }) {
+function BulkImportModal({ onClose, onViewDrafts, toast }: { onClose: () => void; onViewDrafts: () => void; toast: any }) {
   const [activeTab, setActiveTab] = useState<"csv" | "images">("csv");
   const [csvRows, setCsvRows] = useState<{ row: Record<string, string>; errors: string[] }[]>([]);
   const [importing, setImporting] = useState(false);
@@ -3852,7 +3852,7 @@ function BulkImportModal({ onClose, toast }: { onClose: () => void; toast: any }
         imageUrl: r.row.imageUrl || "",
         status: "draft",
       }));
-      const resp = await apiRequest("POST", "/api/artworks/bulk", { artworks });
+      const resp = await apiRequest("POST", "/api/artworks/bulk", artworks);
       const json = await resp.json();
       setResult({ count: json.created });
       queryClient.invalidateQueries({ queryKey: ["/api/artworks"] });
@@ -3919,7 +3919,7 @@ function BulkImportModal({ onClose, toast }: { onClose: () => void; toast: any }
           imageUrl: f.url,
           status: "draft",
         }));
-        const resp2 = await apiRequest("POST", "/api/artworks/bulk", { artworks });
+        const resp2 = await apiRequest("POST", "/api/artworks/bulk", artworks);
         const json = await resp2.json();
         setResult({ count: json.created });
         queryClient.invalidateQueries({ queryKey: ["/api/artworks"] });
@@ -3956,7 +3956,7 @@ function BulkImportModal({ onClose, toast }: { onClose: () => void; toast: any }
             <h3 className="text-[#F5F5F7] text-xl font-medium mb-2">{result.count} artwork{result.count !== 1 ? "s" : ""} imported as drafts</h3>
             <p className="text-[#B3B3B8]/50 text-sm mb-6">They've been added to your shop as drafts. Edit each one to add details and publish.</p>
             <div className="flex items-center justify-center gap-3">
-              <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-sm" onClick={onClose} data-testid="button-view-drafts">
+              <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-sm" onClick={onViewDrafts} data-testid="button-view-drafts">
                 View Drafts in Shop
               </Button>
               <Button variant="ghost" className="text-[#B3B3B8] text-sm border border-white/10" onClick={() => { setResult(null); setCsvRows([]); setImageFiles([]); }} data-testid="button-import-more">
@@ -4153,6 +4153,7 @@ function BulkImportModal({ onClose, toast }: { onClose: () => void; toast: any }
 function ShopTab({ toast }: { toast: any }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [enhancing, setEnhancing] = useState(false);
@@ -4404,8 +4405,21 @@ function ShopTab({ toast }: { toast: any }) {
           <p className="text-[#B3B3B8]/40 text-sm">No artworks yet. Add your first piece.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {artworks.map((artwork) => (
+        <>
+          <div className="flex flex-wrap items-center gap-2" data-testid="artwork-filter-bar">
+            {(["all", "draft", "published", "archived"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`px-3 py-1 rounded-sm text-[10px] uppercase tracking-[0.15em] transition-colors ${statusFilter === s ? "bg-[#C084FC]/20 text-[#C084FC]" : "text-[#B3B3B8]/40 hover:text-[#B3B3B8]"}`}
+                data-testid={`filter-${s}`}
+              >
+                {s === "all" ? `All (${artworks.length})` : `${s} (${artworks.filter(a => a.status === s).length})`}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {artworks.filter((a) => statusFilter === "all" || a.status === statusFilter).map((artwork) => (
             <div key={artwork.id} className="border border-white/8 rounded-sm overflow-hidden" style={{ background: "rgba(255,255,255,0.02)" }} data-testid={`card-admin-artwork-${artwork.id}`}>
               <div className="aspect-[3/4] bg-[#1a1225] relative">
                 {artwork.enhancedImageUrl || artwork.imageUrl ? (
@@ -4442,10 +4456,11 @@ function ShopTab({ toast }: { toast: any }) {
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        </>
       )}
 
-      {showBulkImport && <BulkImportModal onClose={() => setShowBulkImport(false)} toast={toast} />}
+      {showBulkImport && <BulkImportModal onClose={() => setShowBulkImport(false)} onViewDrafts={() => { setStatusFilter("draft"); setShowBulkImport(false); }} toast={toast} />}
     </div>
   );
 }

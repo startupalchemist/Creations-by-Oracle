@@ -1989,9 +1989,9 @@ Generate only the requested fields. Respond in this exact JSON format:
 
   app.post("/api/artworks/bulk", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
-      const { artworks: items } = req.body;
+      const items = req.body;
       if (!Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ message: "artworks array is required" });
+        return res.status(400).json({ message: "Request body must be a non-empty array of artworks" });
       }
       if (items.length > 50) {
         return res.status(400).json({ message: "Maximum 50 artworks per request" });
@@ -2009,12 +2009,16 @@ Generate only the requested fields. Respond in this exact JSON format:
       if (!parsed.success) {
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.errors });
       }
-      const created = [];
+      // Pre-generate slugs, checking for collisions before the transaction
+      const artworkItems: Parameters<typeof storage.bulkCreateArtworks>[0] = [];
+      const usedSlugs = new Set<string>();
       for (const item of parsed.data) {
         let slug = slugify(item.title);
+        if (usedSlugs.has(slug)) slug = slug + "-" + Date.now().toString(36);
         const existing = await storage.getArtworkBySlug(slug);
         if (existing) slug = slug + "-" + Date.now().toString(36);
-        const artwork = await storage.createArtwork({
+        usedSlugs.add(slug);
+        artworkItems.push({
           title: item.title,
           slug,
           medium: item.medium || "",
@@ -2034,8 +2038,8 @@ Generate only the requested fields. Respond in this exact JSON format:
           seoKeywords: [],
           publishedAt: null,
         });
-        created.push(artwork);
       }
+      const created = await storage.bulkCreateArtworks(artworkItems);
       res.status(201).json({ created: created.length, artworks: created });
     } catch (e: any) {
       console.error("Bulk artwork import error:", e?.message);

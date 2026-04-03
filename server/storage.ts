@@ -123,6 +123,7 @@ export interface IStorage {
   deleteGalleryItem(id: number): Promise<void>;
 
   createArtwork(data: InsertArtwork): Promise<Artwork>;
+  bulkCreateArtworks(items: InsertArtwork[]): Promise<Artwork[]>;
   getArtworks(status?: string): Promise<Artwork[]>;
   getArtworkById(id: number): Promise<Artwork | undefined>;
   getArtworkBySlug(slug: string): Promise<Artwork | undefined>;
@@ -522,6 +523,16 @@ export class DatabaseStorage implements IStorage {
   async createArtwork(data: InsertArtwork): Promise<Artwork> {
     const [result] = await db.insert(artworks).values(data).returning();
     return result;
+  }
+  async bulkCreateArtworks(items: InsertArtwork[]): Promise<Artwork[]> {
+    return db.transaction(async (tx) => {
+      const results: Artwork[] = [];
+      for (const item of items) {
+        const [result] = await tx.insert(artworks).values(item).returning();
+        results.push(result);
+      }
+      return results;
+    });
   }
   async getArtworks(status?: string): Promise<Artwork[]> {
     if (status) {
