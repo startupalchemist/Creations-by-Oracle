@@ -55,37 +55,35 @@ import {
   ChevronUp,
   ChevronDown,
   Wand2,
+  Camera,
+  Image,
+  ShoppingBag,
+  Palette,
+  FileCheck,
+  DollarSign,
+  FlipHorizontal,
+  Layers,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import TheDyno from "@/components/the-dyno";
-import type { Lead, Post, Subscriber, Newsletter, Topic, Webhook, WebhookLog, Service, GallerySection, GalleryItem } from "@shared/schema";
-import { leadStatuses, webhookEvents } from "@shared/schema";
+import type { Lead, Post, Subscriber, Newsletter, Topic, Webhook, WebhookLog, Service, GallerySection, GalleryItem, Artwork } from "@shared/schema";
+import { leadStatuses, webhookEvents, artworkCategories } from "@shared/schema";
 
 const statusColors: Record<string, string> = {
-  "New Lead": "bg-blue-500/20 text-blue-400",
-  "Sale Closed": "bg-indigo-500/20 text-indigo-400",
-  "Claim Initiated": "bg-violet-500/20 text-violet-400",
-  "RA Signed": "bg-purple-500/20 text-purple-400",
-  "Loaner Assigned": "bg-fuchsia-500/20 text-fuchsia-400",
-  "Vehicle In Shop": "bg-pink-500/20 text-pink-400",
-  "Scoped": "bg-rose-500/20 text-rose-400",
-  "Estimate Sent": "bg-amber-500/20 text-amber-400",
-  "First Look": "bg-yellow-500/20 text-yellow-400",
-  "Supplement Submitted": "bg-orange-500/20 text-orange-400",
-  "Awaiting Approval": "bg-red-500/20 text-red-400",
-  "Approved": "bg-lime-500/20 text-lime-400",
-  "R&I": "bg-teal-500/20 text-teal-400",
-  "PDR": "bg-cyan-500/20 text-cyan-400",
-  "QC 1": "bg-sky-500/20 text-sky-400",
-  "Reinstall": "bg-blue-500/20 text-blue-400",
-  "QC 2": "bg-sky-500/20 text-sky-400",
-  "Detail": "bg-emerald-500/20 text-emerald-400",
-  "Ready for Delivery": "bg-green-500/20 text-green-400",
-  "Delivered": "bg-green-600/20 text-green-300",
+  "New Inquiry": "bg-[#C084FC]/20 text-[#C084FC]",
+  "Contacted": "bg-blue-500/20 text-blue-400",
+  "Commission Proposed": "bg-violet-500/20 text-violet-400",
+  "Commission Accepted": "bg-indigo-500/20 text-indigo-400",
+  "In Progress": "bg-amber-500/20 text-amber-400",
+  "Awaiting Payment": "bg-orange-500/20 text-orange-400",
+  "Delivered": "bg-green-500/20 text-green-400",
   "Closed": "bg-gray-500/20 text-gray-400",
+  // Legacy fallback colors
+  "New Lead": "bg-blue-500/20 text-blue-400",
+  "Sale Closed": "bg-green-600/20 text-green-300",
 };
 
-type TabKey = "dyno" | "dashboard" | "leads" | "blog" | "newsletter" | "users" | "integrations" | "seo" | "services" | "gallery";
+type TabKey = "dyno" | "dashboard" | "leads" | "blog" | "newsletter" | "users" | "integrations" | "seo" | "services" | "gallery" | "shop" | "pages" | "orders";
 
 export default function Admin() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -118,13 +116,16 @@ export default function Admin() {
   const tabs: { key: TabKey; label: string; icon: typeof BarChart3 }[] = [
     { key: "dyno", label: "The Dyno", icon: Gauge },
     { key: "dashboard", label: "Dashboard", icon: BarChart3 },
-    { key: "leads", label: "Leads", icon: Users },
+    { key: "shop", label: "Shop", icon: ShoppingBag },
+    { key: "orders", label: "Orders", icon: DollarSign },
+    { key: "leads", label: "Inquiries", icon: Users },
     { key: "blog", label: "Blog", icon: FileText },
     { key: "newsletter", label: "Newsletter", icon: Mail },
+    ...(user.role === "root" || user.role === "admin" ? [{ key: "pages" as TabKey, label: "Pages", icon: FileCheck }] : []),
     ...(user.role === "root" || user.role === "admin" ? [{ key: "users" as TabKey, label: "Users", icon: Users }] : []),
     ...(user.role === "root" || user.role === "admin" ? [{ key: "integrations" as TabKey, label: "Integrations", icon: Zap }] : []),
     ...(user.role === "root" || user.role === "admin" ? [{ key: "seo" as TabKey, label: "SEO", icon: Target }] : []),
-    ...(user.role === "root" || user.role === "admin" ? [{ key: "services" as TabKey, label: "Services", icon: Sparkles }] : []),
+    ...(user.role === "root" || user.role === "admin" ? [{ key: "services" as TabKey, label: "Blog Services", icon: Sparkles }] : []),
     ...(user.role === "root" || user.role === "admin" ? [{ key: "gallery" as TabKey, label: "Gallery", icon: Globe }] : []),
   ];
 
@@ -133,11 +134,11 @@ export default function Admin() {
       <div className="max-w-7xl mx-auto px-6 lg:px-10 pb-24">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold mb-1">
+            <p className="text-xs uppercase tracking-[0.3em] text-[#C084FC] font-semibold mb-1">
               Admin Panel
             </p>
-            <h1 className="text-2xl font-bold text-[#F5F5F7] uppercase tracking-tight" data-testid="text-admin-headline">
-              Reign Services
+            <h1 className="text-2xl font-light text-[#F5F5F7] tracking-[0.2em] uppercase" data-testid="text-admin-headline" style={{ fontFamily: "Georgia, serif" }}>
+              Studio
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -173,6 +174,9 @@ export default function Admin() {
 
         {activeTab === "dyno" && <TheDyno />}
         {activeTab === "dashboard" && <DashboardTab />}
+        {activeTab === "shop" && <ShopTab toast={toast} />}
+        {activeTab === "orders" && <OrdersTab toast={toast} />}
+        {activeTab === "pages" && (user.role === "root" || user.role === "admin") && <PagesTab toast={toast} />}
         {activeTab === "leads" && <LeadsTab toast={toast} />}
         {activeTab === "blog" && (
           <BlogTab
@@ -3754,6 +3758,416 @@ function GalleryTab({ toast }: { toast: any }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── ShopTab ──────────────────────────────────────────────────────────────────
+
+function ShopTab({ toast }: { toast: any }) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [enhancing, setEnhancing] = useState(false);
+  const [aiResult, setAiResult] = useState<any>(null);
+
+  const [form, setForm] = useState({
+    title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "",
+    enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false,
+    seoTitle: "", seoDescription: "", status: "draft",
+  });
+
+  const resetForm = () => {
+    setForm({ title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "", enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false, seoTitle: "", seoDescription: "", status: "draft" });
+    setAiResult(null);
+    setCapturedImage(null);
+    setEditingId(null);
+  };
+
+  const { data: artworks, isLoading } = useQuery<Artwork[]>({
+    queryKey: ["/api/artworks"],
+    queryFn: () => fetch("/api/artworks").then((r) => r.json()),
+  });
+
+  const createArtwork = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/artworks", data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/artworks"] }); toast({ title: "Artwork created" }); setShowCreate(false); resetForm(); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const updateArtwork = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/artworks/${id}`, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/artworks"] }); toast({ title: "Artwork updated" }); setEditingId(null); resetForm(); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteArtwork = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/artworks/${id}`, {}),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/artworks"] }); toast({ title: "Artwork deleted" }); },
+  });
+
+  const uploadImage = async (base64: string, name: string) => {
+    const r = await apiRequest("POST", "/api/upload", { imageData: base64, filename: name });
+    const j = await r.json();
+    return j.url as string;
+  };
+
+  const handleEnhance = async () => {
+    const imageUrl = form.imageUrl || capturedImage;
+    if (!imageUrl) return toast({ title: "Upload or capture an image first", variant: "destructive" });
+    setEnhancing(true);
+    try {
+      let url = imageUrl;
+      if (imageUrl.startsWith("data:")) {
+        url = await uploadImage(imageUrl, form.title || "artwork");
+        setForm((f) => ({ ...f, imageUrl: url }));
+      }
+      const r = await apiRequest("POST", "/api/ai/enhance-artwork", { imageUrl: url, title: form.title, medium: form.medium, dimensions: form.dimensions });
+      const json = await r.json();
+      setAiResult(json);
+      setForm((f) => ({ ...f, description: json.description || f.description, seoTitle: json.seoTitle || f.seoTitle, seoDescription: json.seoDescription || f.seoDescription, price: json.suggestedPrice ? String(json.suggestedPrice) : f.price }));
+      toast({ title: "AI analysis complete", description: `Capture score: ${json.captureScore}/100` });
+    } catch (e: any) {
+      toast({ title: "AI analysis failed", description: e.message, variant: "destructive" });
+    } finally {
+      setEnhancing(false);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { const data = ev.target?.result as string; setCapturedImage(data); setForm((f) => ({ ...f, imageUrl: data })); };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async () => {
+    let imageUrl = form.imageUrl;
+    let enhancedImageUrl = form.enhancedImageUrl;
+    if (imageUrl && imageUrl.startsWith("data:")) imageUrl = await uploadImage(imageUrl, form.title || "artwork");
+    if (enhancedImageUrl && enhancedImageUrl.startsWith("data:")) enhancedImageUrl = await uploadImage(enhancedImageUrl, (form.title || "artwork") + "-enhanced");
+    const payload = { ...form, imageUrl, enhancedImageUrl, year: form.year ? parseInt(form.year) : null, price: form.price || null };
+    if (editingId) { updateArtwork.mutate({ id: editingId, data: payload }); } else { createArtwork.mutate(payload); }
+  };
+
+  const startEdit = (artwork: Artwork) => {
+    setEditingId(artwork.id);
+    setForm({ title: artwork.title, medium: artwork.medium || "", dimensions: artwork.dimensions || "", year: artwork.year ? String(artwork.year) : "", description: artwork.description || "", imageUrl: artwork.imageUrl || "", enhancedImageUrl: artwork.enhancedImageUrl || "", price: artwork.price ? String(artwork.price) : "", forSale: artwork.forSale ?? false, category: artwork.category || "Abstract", featured: artwork.featured ?? false, seoTitle: artwork.seoTitle || "", seoDescription: artwork.seoDescription || "", status: artwork.status || "draft" });
+    setShowCreate(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  return (
+    <div className="space-y-6" data-testid="tab-shop-content">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-medium text-[#F5F5F7]">Artwork Manager</h2>
+          <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Create, edit, and publish original works for sale</p>
+        </div>
+        <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs" onClick={() => { resetForm(); setShowCreate(true); }} data-testid="button-create-artwork">
+          <Plus className="w-3.5 h-3.5 mr-1.5" />Add Artwork
+        </Button>
+      </div>
+
+      {(showCreate || editingId !== null) && (
+        <div className="border border-white/10 rounded-sm p-6" style={{ background: "rgba(255,255,255,0.02)" }}>
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-[#F5F5F7] font-medium text-sm">{editingId ? "Edit Artwork" : "New Artwork"}</h3>
+            <button onClick={() => { setShowCreate(false); resetForm(); }} className="text-[#B3B3B8]/40 hover:text-[#B3B3B8]"><X className="w-4 h-4" /></button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-2">Artwork Image</label>
+                {form.imageUrl && !form.imageUrl.startsWith("data:") ? (
+                  <div className="relative aspect-[3/4] rounded-sm overflow-hidden bg-[#1a1225] mb-3">
+                    <img src={form.imageUrl} alt="Artwork" className="w-full h-full object-cover" />
+                    <button className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-sm" onClick={() => setForm((f) => ({ ...f, imageUrl: "" }))}><X className="w-3 h-3" /></button>
+                  </div>
+                ) : capturedImage ? (
+                  <div className="relative aspect-[3/4] rounded-sm overflow-hidden bg-[#1a1225] mb-3">
+                    <img src={capturedImage} alt="Captured" className="w-full h-full object-cover" />
+                    <button className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-sm" onClick={() => { setCapturedImage(null); setForm((f) => ({ ...f, imageUrl: "" })); }}><X className="w-3 h-3" /></button>
+                  </div>
+                ) : (
+                  <div className="aspect-[3/4] rounded-sm border border-dashed border-white/15 bg-[#141416] flex flex-col items-center justify-center mb-3 relative overflow-hidden">
+                    <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer">
+                      <Image className="w-8 h-8 text-white/15 mb-2" />
+                      <span className="text-[#B3B3B8]/40 text-xs text-center px-4">Click to upload or drag & drop</span>
+                      <span className="text-[#B3B3B8]/25 text-[10px] mt-1">JPG, PNG, WEBP</span>
+                      <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileUpload} data-testid="input-artwork-image-file" />
+                    </label>
+                  </div>
+                )}
+                <Input placeholder="Or paste image URL" value={form.imageUrl.startsWith("data:") ? "" : form.imageUrl} onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))} className="bg-[#141416] border-white/10 text-[#F5F5F7] text-xs" data-testid="input-artwork-image-url" />
+              </div>
+
+              <div className="space-y-2">
+                <Button className="w-full bg-[#C084FC]/20 hover:bg-[#C084FC]/30 text-[#C084FC] border border-[#C084FC]/30 text-xs" onClick={handleEnhance} disabled={enhancing || (!form.imageUrl && !capturedImage)} data-testid="button-ai-enhance">
+                  {enhancing ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Sparkles className="w-3.5 h-3.5 mr-1.5" />}
+                  {enhancing ? "Analyzing artwork..." : "AI Analyze & Generate Description"}
+                </Button>
+                {aiResult && (
+                  <div className="border border-[#C084FC]/20 rounded-sm p-3 text-xs space-y-1" style={{ background: "rgba(192,132,252,0.05)" }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#C084FC] font-medium">AI Analysis</span>
+                      <span className={`text-xs ${(aiResult.captureScore || 0) >= 80 ? "text-green-400" : (aiResult.captureScore || 0) >= 60 ? "text-amber-400" : "text-red-400"}`}>Photo: {aiResult.captureScore}/100</span>
+                    </div>
+                    {aiResult.captureNotes && <p className="text-[#B3B3B8]/60">{aiResult.captureNotes}</p>}
+                    {aiResult.suggestedPrice && <p className="text-[#C084FC]/80">Suggested price: ${aiResult.suggestedPrice?.toLocaleString()}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Title *</label>
+                  <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Artwork title" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-artwork-title" />
+                </div>
+                <div>
+                  <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Category</label>
+                  <Select value={form.category} onValueChange={(v) => setForm((f) => ({ ...f, category: v }))}>
+                    <SelectTrigger className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="select-artwork-category"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-[#141416] border-white/10">{artworkCategories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Medium</label>
+                  <Input value={form.medium} onChange={(e) => setForm((f) => ({ ...f, medium: e.target.value }))} placeholder="Oil on canvas" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-artwork-medium" />
+                </div>
+                <div>
+                  <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Dimensions</label>
+                  <Input value={form.dimensions} onChange={(e) => setForm((f) => ({ ...f, dimensions: e.target.value }))} placeholder='24"×36"' className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-artwork-dimensions" />
+                </div>
+                <div>
+                  <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Year</label>
+                  <Input value={form.year} onChange={(e) => setForm((f) => ({ ...f, year: e.target.value }))} placeholder="2024" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-artwork-year" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Description</label>
+                <Textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Written or AI-generated artwork description" rows={5} className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm resize-none" data-testid="textarea-artwork-description" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Price (USD)</label>
+                  <Input value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="2500" type="number" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-artwork-price" />
+                </div>
+                <div>
+                  <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Status</label>
+                  <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+                    <SelectTrigger className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="select-artwork-status"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-[#141416] border-white/10">
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="published">Published</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <Switch checked={form.forSale} onCheckedChange={(v) => setForm((f) => ({ ...f, forSale: v }))} data-testid="switch-artwork-forsale" />
+                  <label className="text-[#B3B3B8]/70 text-xs">For Sale</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch checked={form.featured} onCheckedChange={(v) => setForm((f) => ({ ...f, featured: v }))} data-testid="switch-artwork-featured" />
+                  <label className="text-[#B3B3B8]/70 text-xs">Featured on Home</label>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <label className="text-[#B3B3B8]/40 text-[10px] uppercase tracking-[0.15em] block">SEO (auto-generated by AI)</label>
+                <Input value={form.seoTitle} onChange={(e) => setForm((f) => ({ ...f, seoTitle: e.target.value }))} placeholder="SEO title" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-xs" data-testid="input-artwork-seo-title" />
+                <Input value={form.seoDescription} onChange={(e) => setForm((f) => ({ ...f, seoDescription: e.target.value }))} placeholder="SEO description" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-xs" data-testid="input-artwork-seo-desc" />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs flex-1" disabled={!form.title || createArtwork.isPending || updateArtwork.isPending} onClick={handleSave} data-testid="button-save-artwork">
+                  {(createArtwork.isPending || updateArtwork.isPending) ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+                  {editingId ? "Update Artwork" : "Save Artwork"}
+                </Button>
+                <Button variant="ghost" className="text-[#B3B3B8] text-xs border border-white/10" onClick={() => { setShowCreate(false); resetForm(); }}>Cancel</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" /></div>
+      ) : !artworks?.length ? (
+        <div className="text-center py-16 border border-white/8 rounded-sm">
+          <Palette className="w-8 h-8 text-white/10 mx-auto mb-3" />
+          <p className="text-[#B3B3B8]/40 text-sm">No artworks yet. Add your first piece.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {artworks.map((artwork) => (
+            <div key={artwork.id} className="border border-white/8 rounded-sm overflow-hidden" style={{ background: "rgba(255,255,255,0.02)" }} data-testid={`card-admin-artwork-${artwork.id}`}>
+              <div className="aspect-[3/4] bg-[#1a1225] relative">
+                {artwork.enhancedImageUrl || artwork.imageUrl ? (
+                  <img src={artwork.enhancedImageUrl || artwork.imageUrl} alt={artwork.title} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center"><Palette className="w-6 h-6 text-white/10" /></div>
+                )}
+                <div className="absolute top-2 left-2 flex flex-col gap-1">
+                  <span className={`text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded-sm ${artwork.status === "published" ? "bg-green-500/20 text-green-400" : artwork.status === "archived" ? "bg-gray-500/20 text-gray-400" : "bg-amber-500/20 text-amber-400"}`}>{artwork.status}</span>
+                  {artwork.forSale && !artwork.sold && <span className="text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded-sm bg-[#C084FC]/20 text-[#C084FC]">For Sale</span>}
+                  {artwork.sold && <span className="text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded-sm bg-gray-500/20 text-gray-400">Sold</span>}
+                </div>
+              </div>
+              <div className="p-3 space-y-2">
+                <div>
+                  <p className="text-[9px] uppercase tracking-[0.15em] text-[#B3B3B8]/40">{artwork.category}</p>
+                  <h4 className="text-[#F5F5F7] text-sm font-medium leading-tight">{artwork.title}</h4>
+                  {artwork.medium && <p className="text-[#B3B3B8]/40 text-xs">{artwork.medium}</p>}
+                  {artwork.price && <p className="text-[#C084FC] text-sm">${parseFloat(String(artwork.price)).toLocaleString()}</p>}
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  <Button variant="ghost" className="text-[#B3B3B8] text-[10px] px-2 py-1 h-auto border border-white/10" onClick={() => startEdit(artwork)} data-testid={`button-edit-artwork-${artwork.id}`}>
+                    <Pencil className="w-3 h-3 mr-1" />Edit
+                  </Button>
+                  {artwork.status !== "published" && (
+                    <Button variant="ghost" className="text-green-400 text-[10px] px-2 py-1 h-auto border border-green-500/20" onClick={() => updateArtwork.mutate({ id: artwork.id, data: { status: "published" } })} data-testid={`button-publish-artwork-${artwork.id}`}>
+                      <Globe className="w-3 h-3 mr-1" />Publish
+                    </Button>
+                  )}
+                  <Button variant="ghost" className="text-red-400 text-[10px] px-2 py-1 h-auto border border-red-500/20" onClick={() => { if (confirm("Delete artwork?")) deleteArtwork.mutate(artwork.id); }} data-testid={`button-delete-artwork-${artwork.id}`}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── OrdersTab ─────────────────────────────────────────────────────────────────
+
+function OrdersTab({ toast }: { toast: any }) {
+  const { data: orders, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/orders"],
+    queryFn: () => fetch("/api/orders").then((r) => r.json()),
+  });
+
+  return (
+    <div className="space-y-4" data-testid="tab-orders-content">
+      <div>
+        <h2 className="text-lg font-medium text-[#F5F5F7]">Orders</h2>
+        <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Artwork purchases and sales records</p>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" /></div>
+      ) : !orders?.length ? (
+        <div className="text-center py-16 border border-white/8 rounded-sm">
+          <DollarSign className="w-8 h-8 text-white/10 mx-auto mb-3" />
+          <p className="text-[#B3B3B8]/40 text-sm">No orders yet.</p>
+          <p className="text-[#B3B3B8]/25 text-xs mt-1">Orders will appear here when collectors purchase through your shop.</p>
+        </div>
+      ) : (
+        <div className="border border-white/8 rounded-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/8" style={{ background: "rgba(255,255,255,0.02)" }}>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Artwork</th>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Buyer</th>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Amount</th>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Status</th>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order: any) => (
+                <tr key={order.id} className="border-b border-white/5" data-testid={`row-order-${order.id}`}>
+                  <td className="px-4 py-3 text-[#F5F5F7] text-xs">Artwork #{order.artworkId}</td>
+                  <td className="px-4 py-3"><p className="text-[#F5F5F7] text-xs">{order.buyerName}</p><p className="text-[#B3B3B8]/40 text-[10px]">{order.buyerEmail}</p></td>
+                  <td className="px-4 py-3 text-[#C084FC] text-xs">${parseFloat(String(order.amount || 0)).toLocaleString()}</td>
+                  <td className="px-4 py-3"><span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${order.status === "paid" ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"}`}>{order.status}</span></td>
+                  <td className="px-4 py-3 text-[#B3B3B8]/40 text-xs">{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PagesTab ──────────────────────────────────────────────────────────────────
+
+function PagesTab({ toast }: { toast: any }) {
+  const { data: pages, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/pages"],
+    queryFn: () => fetch("/api/pages").then((r) => r.json()),
+  });
+
+  const deletePage = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/pages/${id}`, {}),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/pages"] }); toast({ title: "Page removed from registry" }); },
+  });
+
+  return (
+    <div className="space-y-4" data-testid="tab-pages-content">
+      <div>
+        <h2 className="text-lg font-medium text-[#F5F5F7]">Page Registry</h2>
+        <p className="text-[#B3B3B8]/50 text-xs mt-0.5">All indexed pages — auto-populated when artworks and posts are published</p>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" /></div>
+      ) : !pages?.length ? (
+        <div className="text-center py-16 border border-white/8 rounded-sm">
+          <FileCheck className="w-8 h-8 text-white/10 mx-auto mb-3" />
+          <p className="text-[#B3B3B8]/40 text-sm">No pages registered yet.</p>
+          <p className="text-[#B3B3B8]/25 text-xs mt-1">Pages are auto-created when artworks and blog posts are published.</p>
+        </div>
+      ) : (
+        <div className="border border-white/8 rounded-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/8" style={{ background: "rgba(255,255,255,0.02)" }}>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Page</th>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Type</th>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Slug</th>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Status</th>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pages.map((page: any) => (
+                <tr key={page.id} className="border-b border-white/5" data-testid={`row-page-${page.id}`}>
+                  <td className="px-4 py-3"><p className="text-[#F5F5F7] text-xs font-medium">{page.title}</p>{page.seoTitle && <p className="text-[#B3B3B8]/30 text-[10px]">{page.seoTitle}</p>}</td>
+                  <td className="px-4 py-3"><span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${page.pageType === "artwork" ? "bg-[#C084FC]/20 text-[#C084FC]" : page.pageType === "blog" ? "bg-blue-500/20 text-blue-400" : "bg-gray-500/20 text-gray-400"}`}>{page.pageType}</span></td>
+                  <td className="px-4 py-3"><a href={`/${page.slug}`} target="_blank" rel="noopener noreferrer" className="text-[#B3B3B8]/60 hover:text-[#C084FC] text-xs flex items-center gap-1 transition-colors">/{page.slug}<ExternalLink className="w-3 h-3" /></a></td>
+                  <td className="px-4 py-3"><span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${page.status === "published" ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"}`}>{page.status}</span></td>
+                  <td className="px-4 py-3">
+                    <Button variant="ghost" className="text-red-400 text-[10px] px-2 py-1 h-auto border border-red-500/15" onClick={() => { if (confirm("Remove from page registry?")) deletePage.mutate(page.id); }} data-testid={`button-delete-page-${page.id}`}>
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="px-4 py-3 border-t border-white/5">
+            <p className="text-[#B3B3B8]/25 text-[10px]">{pages.length} page{pages.length !== 1 ? "s" : ""} in registry</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

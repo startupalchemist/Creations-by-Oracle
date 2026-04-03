@@ -1,5 +1,5 @@
 import {
-  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems,
+  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry,
   type Lead, type InsertLead,
   type User, type InsertUser,
   type Session,
@@ -17,9 +17,13 @@ import {
   type Service, type InsertService,
   type GallerySection, type InsertGallerySection,
   type GalleryItem, type InsertGalleryItem,
+  type Artwork, type InsertArtwork,
+  type Order,
+  type AnalyticsEvent,
+  type PageRegistry, type InsertPageRegistry,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, gte, count, sum } from "drizzle-orm";
 
 export interface IStorage {
   createLead(lead: InsertLead): Promise<Lead>;
@@ -117,6 +121,38 @@ export interface IStorage {
   createGalleryItem(data: InsertGalleryItem): Promise<GalleryItem>;
   updateGalleryItem(id: number, data: Partial<GalleryItem>): Promise<GalleryItem | undefined>;
   deleteGalleryItem(id: number): Promise<void>;
+
+  createArtwork(data: InsertArtwork): Promise<Artwork>;
+  getArtworks(status?: string): Promise<Artwork[]>;
+  getArtworkById(id: number): Promise<Artwork | undefined>;
+  getArtworkBySlug(slug: string): Promise<Artwork | undefined>;
+  updateArtwork(id: number, data: Partial<Artwork>): Promise<Artwork | undefined>;
+  deleteArtwork(id: number): Promise<void>;
+  incrementArtworkViewCount(id: number): Promise<void>;
+
+  createOrder(data: { artworkId: number; buyerName: string; buyerEmail: string; amount: string; stripeSessionId: string; currency?: string; shippingAddress?: string }): Promise<Order>;
+  getOrders(): Promise<Order[]>;
+  getOrderBySessionId(sessionId: string): Promise<Order | undefined>;
+  updateOrder(id: number, data: Partial<Order>): Promise<Order | undefined>;
+
+  trackEvent(data: { page: string; eventType: string; sessionId?: string; referrer?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; metadata?: string }): Promise<AnalyticsEvent>;
+  getAnalyticsSummary(days?: number): Promise<{
+    totalViews: number;
+    uniqueSessions: number;
+    ctaClicks: number;
+    conversions: number;
+    contactSubmits: number;
+    topPages: { page: string; views: number }[];
+  }>;
+
+  getPageRegistry(): Promise<PageRegistry[]>;
+  getPageBySlug(slug: string): Promise<PageRegistry | undefined>;
+  createPage(data: InsertPageRegistry): Promise<PageRegistry>;
+  updatePage(id: number, data: Partial<PageRegistry>): Promise<PageRegistry | undefined>;
+  deletePage(id: number): Promise<void>;
+  incrementPageView(slug: string): Promise<void>;
+  incrementPageCTA(slug: string): Promise<void>;
+  incrementPageConversion(slug: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -176,9 +212,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(sessions).where(eq(sessions.token, token));
   }
   async deleteExpiredSessions(): Promise<void> {
-    await db.delete(sessions).where(
-      eq(sessions.expiresAt, new Date(0))
-    );
+    await db.delete(sessions).where(eq(sessions.expiresAt, new Date(0)));
   }
 
   async createPost(post: InsertPost & { authorId: number }): Promise<Post> {
@@ -313,7 +347,7 @@ export class DatabaseStorage implements IStorage {
   }
   async getActiveWebhooksForEvent(event: string): Promise<Webhook[]> {
     const allActive = await db.select().from(webhooks).where(eq(webhooks.active, true));
-    return allActive.filter(w => w.events.includes(event));
+    return allActive.filter((w) => (w.events as string[]).includes(event));
   }
   async createWebhookLog(data: { webhookId: number; event: string; payload: string; statusCode?: number; response?: string; success: boolean; duration?: number }): Promise<WebhookLog> {
     const [result] = await db.insert(webhookLogs).values(data).returning();
@@ -351,17 +385,15 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(backlinkClicks).where(eq(backlinkClicks.backlinkId, backlinkId)).orderBy(desc(backlinkClicks.clickedAt));
   }
   async getBacklinkAnalytics(): Promise<{ platform: string; clicks: number; backlinkCount: number }[]> {
-    const result = await db
-      .select({
-        platform: backlinks.platform,
-        clicks: sql<number>`sum(${backlinks.clicks})::int`,
-        backlinkCount: sql<number>`count(*)::int`,
-      })
-      .from(backlinks)
-      .groupBy(backlinks.platform)
-      .orderBy(sql`sum(${backlinks.clicks}) desc`);
-    return result;
+    const allBacklinks = await db.select().from(backlinks);
+    const map = new Map<string, { clicks: number; backlinkCount: number }>();
+    for (const b of allBacklinks) {
+      const existing = map.get(b.platform) || { clicks: 0, backlinkCount: 0 };
+      map.set(b.platform, { clicks: existing.clicks + b.clicks, backlinkCount: existing.backlinkCount + 1 });
+    }
+    return Array.from(map.entries()).map(([platform, stats]) => ({ platform, ...stats }));
   }
+
   async createRating(data: { leadId: number | null; score: number; token: string; channel?: string }): Promise<Rating> {
     const [result] = await db.insert(ratings).values(data).returning();
     return result;
@@ -381,21 +413,18 @@ export class DatabaseStorage implements IStorage {
     return result?.value;
   }
   async setSetting(key: string, value: string): Promise<void> {
-    await db.insert(settings).values({ key, value }).onConflictDoUpdate({
-      target: settings.key,
-      set: { value, updatedAt: new Date() },
-    });
+    await db.insert(settings).values({ key, value }).onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
   }
   async getLeadSentimentSent(leadId: number): Promise<boolean> {
-    const val = await this.getSetting(`sentiment_sent_${leadId}`);
-    return val === "true";
+    const existing = await db.select().from(ratings).where(eq(ratings.leadId, leadId));
+    return existing.length > 0;
   }
   async markLeadSentimentSent(leadId: number): Promise<void> {
-    await this.setSetting(`sentiment_sent_${leadId}`, "true");
+    // no-op; existence of rating record serves as the marker
   }
 
   async getServices(): Promise<Service[]> {
-    return db.select().from(services).orderBy(services.displayOrder, desc(services.createdAt));
+    return db.select().from(services).orderBy(services.displayOrder);
   }
   async getServiceById(id: number): Promise<Service | undefined> {
     const [result] = await db.select().from(services).where(eq(services.id, id));
@@ -414,40 +443,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPublicGallery(): Promise<{ sections: (GallerySection & { items: GalleryItem[] })[] }> {
-    const sections = await db
-      .select()
-      .from(gallerySections)
-      .where(eq(gallerySections.isActive, true))
-      .orderBy(gallerySections.displayOrder);
-    const result: (GallerySection & { items: GalleryItem[] })[] = [];
-    for (const section of sections) {
-      const items = await db
-        .select()
-        .from(galleryItems)
-        .where(and(eq(galleryItems.sectionId, section.id), eq(galleryItems.isActive, true)))
-        .orderBy(galleryItems.displayOrder);
-      result.push({ ...section, items });
-    }
-    return { sections: result };
+    const sections = await db.select().from(gallerySections).where(eq(gallerySections.isActive, true)).orderBy(gallerySections.displayOrder);
+    const items = await db.select().from(galleryItems).where(eq(galleryItems.isActive, true)).orderBy(galleryItems.displayOrder);
+    return {
+      sections: sections.map((s) => ({
+        ...s,
+        items: items.filter((i) => i.sectionId === s.id),
+      })),
+    };
   }
-
   async getAdminGallery(): Promise<{ sections: (GallerySection & { items: GalleryItem[] })[] }> {
-    const sections = await db
-      .select()
-      .from(gallerySections)
-      .orderBy(gallerySections.displayOrder);
-    const result: (GallerySection & { items: GalleryItem[] })[] = [];
-    for (const section of sections) {
-      const items = await db
-        .select()
-        .from(galleryItems)
-        .where(eq(galleryItems.sectionId, section.id))
-        .orderBy(galleryItems.displayOrder);
-      result.push({ ...section, items });
-    }
-    return { sections: result };
+    const sections = await db.select().from(gallerySections).orderBy(gallerySections.displayOrder);
+    const items = await db.select().from(galleryItems).orderBy(galleryItems.displayOrder);
+    return {
+      sections: sections.map((s) => ({
+        ...s,
+        items: items.filter((i) => i.sectionId === s.id),
+      })),
+    };
   }
-
   async getGallerySections(): Promise<GallerySection[]> {
     return db.select().from(gallerySections).orderBy(gallerySections.displayOrder);
   }
@@ -466,9 +480,8 @@ export class DatabaseStorage implements IStorage {
   async deleteGallerySection(id: number): Promise<void> {
     await db.delete(gallerySections).where(eq(gallerySections.id, id));
   }
-
   async getGalleryItems(sectionId?: number): Promise<GalleryItem[]> {
-    if (sectionId !== undefined) {
+    if (sectionId) {
       return db.select().from(galleryItems).where(eq(galleryItems.sectionId, sectionId)).orderBy(galleryItems.displayOrder);
     }
     return db.select().from(galleryItems).orderBy(galleryItems.displayOrder);
@@ -487,6 +500,116 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteGalleryItem(id: number): Promise<void> {
     await db.delete(galleryItems).where(eq(galleryItems.id, id));
+  }
+
+  async createArtwork(data: InsertArtwork): Promise<Artwork> {
+    const [result] = await db.insert(artworks).values(data).returning();
+    return result;
+  }
+  async getArtworks(status?: string): Promise<Artwork[]> {
+    if (status) {
+      return db.select().from(artworks).where(eq(artworks.status, status)).orderBy(desc(artworks.createdAt));
+    }
+    return db.select().from(artworks).orderBy(desc(artworks.createdAt));
+  }
+  async getArtworkById(id: number): Promise<Artwork | undefined> {
+    const [result] = await db.select().from(artworks).where(eq(artworks.id, id));
+    return result;
+  }
+  async getArtworkBySlug(slug: string): Promise<Artwork | undefined> {
+    const [result] = await db.select().from(artworks).where(eq(artworks.slug, slug));
+    return result;
+  }
+  async updateArtwork(id: number, data: Partial<Artwork>): Promise<Artwork | undefined> {
+    const [result] = await db.update(artworks).set({ ...data, updatedAt: new Date() }).where(eq(artworks.id, id)).returning();
+    return result;
+  }
+  async deleteArtwork(id: number): Promise<void> {
+    await db.delete(artworks).where(eq(artworks.id, id));
+  }
+  async incrementArtworkViewCount(id: number): Promise<void> {
+    await db.update(artworks).set({ viewCount: sql`${artworks.viewCount} + 1` }).where(eq(artworks.id, id));
+  }
+
+  async createOrder(data: { artworkId: number; buyerName: string; buyerEmail: string; amount: string; stripeSessionId: string; currency?: string; shippingAddress?: string }): Promise<Order> {
+    const [result] = await db.insert(orders).values(data).returning();
+    return result;
+  }
+  async getOrders(): Promise<Order[]> {
+    return db.select().from(orders).orderBy(desc(orders.createdAt));
+  }
+  async getOrderBySessionId(sessionId: string): Promise<Order | undefined> {
+    const [result] = await db.select().from(orders).where(eq(orders.stripeSessionId, sessionId));
+    return result;
+  }
+  async updateOrder(id: number, data: Partial<Order>): Promise<Order | undefined> {
+    const [result] = await db.update(orders).set(data).where(eq(orders.id, id)).returning();
+    return result;
+  }
+
+  async trackEvent(data: { page: string; eventType: string; sessionId?: string; referrer?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; metadata?: string }): Promise<AnalyticsEvent> {
+    const [result] = await db.insert(analyticsEvents).values(data).returning();
+    return result;
+  }
+  async getAnalyticsSummary(days: number = 30): Promise<{
+    totalViews: number;
+    uniqueSessions: number;
+    ctaClicks: number;
+    conversions: number;
+    contactSubmits: number;
+    topPages: { page: string; views: number }[];
+  }> {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const events = await db.select().from(analyticsEvents).where(gte(analyticsEvents.createdAt, since));
+    const views = events.filter((e) => e.eventType === "page_view");
+    const uniqueSessionSet = new Set(events.filter((e) => e.sessionId).map((e) => e.sessionId));
+    const ctaClicks = events.filter((e) => e.eventType === "cta_click").length;
+    const conversions = events.filter((e) => e.eventType === "purchase").length;
+    const contactSubmits = events.filter((e) => e.eventType === "contact_submit" || e.eventType === "cta_submit").length;
+    const pageMap = new Map<string, number>();
+    for (const v of views) {
+      pageMap.set(v.page, (pageMap.get(v.page) || 0) + 1);
+    }
+    const topPages = Array.from(pageMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([page, views]) => ({ page, views }));
+    return {
+      totalViews: views.length,
+      uniqueSessions: uniqueSessionSet.size,
+      ctaClicks,
+      conversions,
+      contactSubmits,
+      topPages,
+    };
+  }
+
+  async getPageRegistry(): Promise<PageRegistry[]> {
+    return db.select().from(pageRegistry).orderBy(desc(pageRegistry.createdAt));
+  }
+  async getPageBySlug(slug: string): Promise<PageRegistry | undefined> {
+    const [result] = await db.select().from(pageRegistry).where(eq(pageRegistry.slug, slug));
+    return result;
+  }
+  async createPage(data: InsertPageRegistry): Promise<PageRegistry> {
+    const [result] = await db.insert(pageRegistry).values(data).returning();
+    return result;
+  }
+  async updatePage(id: number, data: Partial<PageRegistry>): Promise<PageRegistry | undefined> {
+    const [result] = await db.update(pageRegistry).set({ ...data, updatedAt: new Date() }).where(eq(pageRegistry.id, id)).returning();
+    return result;
+  }
+  async deletePage(id: number): Promise<void> {
+    await db.delete(pageRegistry).where(eq(pageRegistry.id, id));
+  }
+  async incrementPageView(slug: string): Promise<void> {
+    await db.update(pageRegistry).set({ viewCount: sql`${pageRegistry.viewCount} + 1` }).where(eq(pageRegistry.slug, slug));
+  }
+  async incrementPageCTA(slug: string): Promise<void> {
+    await db.update(pageRegistry).set({ ctaClickCount: sql`${pageRegistry.ctaClickCount} + 1` }).where(eq(pageRegistry.slug, slug));
+  }
+  async incrementPageConversion(slug: string): Promise<void> {
+    await db.update(pageRegistry).set({ conversionCount: sql`${pageRegistry.conversionCount} + 1` }).where(eq(pageRegistry.slug, slug));
   }
 }
 

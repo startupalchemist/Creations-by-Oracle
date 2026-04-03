@@ -1,7 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertLeadSchema, insertWebhookSchema, leadStatuses, webhookEvents } from "@shared/schema";
+import { insertLeadSchema, insertWebhookSchema, leadStatuses, webhookEvents, insertArtworkSchema, artworkCategories, artworkStatuses } from "@shared/schema";
+import fs from "fs";
+import path from "path";
 import { z } from "zod";
 import { authMiddleware, requireRole, hashPassword, verifyPassword, createSession, destroySession } from "./auth";
 import crypto from "crypto";
@@ -83,12 +85,12 @@ async function sendSentimentSurvey(lead: { id: number; name: string; email: stri
     await client.emails.send({
       from: fromEmail,
       to: lead.email,
-      subject: "How was your experience with Reign Services?",
+      subject: "How was your experience with us?",
       html: `
         <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
-          <p style="color: #B3B3B8; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 16px;">Reign Services</p>
-          <h2 style="font-size: 22px; font-weight: 700; margin: 0 0 16px 0;">How did we do, ${lead.name.split(" ")[0]}?</h2>
-          <p style="color: #B3B3B8; font-size: 14px; line-height: 1.6; margin-bottom: 32px;">Your project has been completed. We'd appreciate a quick rating of your experience.</p>
+          <p style="color: #B3B3B8; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 16px;">Studio</p>
+          <h2 style="font-size: 22px; font-weight: 700; margin: 0 0 16px 0;">How was your experience, ${lead.name.split(" ")[0]}?</h2>
+          <p style="color: #B3B3B8; font-size: 14px; line-height: 1.6; margin-bottom: 32px;">Thank you for your inquiry. We'd love to hear about your experience working with us.</p>
           <div style="text-align: center; margin-bottom: 32px;">
             <a href="${rateUrl}&score=5" style="text-decoration: none; font-size: 32px; margin: 0 8px;">&#128515;</a>
             <a href="${rateUrl}&score=4" style="text-decoration: none; font-size: 32px; margin: 0 8px;">&#128578;</a>
@@ -282,19 +284,8 @@ export async function registerRoutes(
         }
         updates.status = req.body.status;
       }
-
-      if (typeof req.body.loanerRequested === "boolean") {
-        updates.loanerRequested = req.body.loanerRequested;
-      }
-      if (typeof req.body.pickupRequested === "boolean") {
-        updates.pickupRequested = req.body.pickupRequested;
-      }
-      if (typeof req.body.insuranceApproved === "boolean") {
-        updates.insuranceApproved = req.body.insuranceApproved;
-        if (req.body.insuranceApproved) {
-          updates.insuranceApprovalTimestamp = new Date();
-        }
-      }
+      if (req.body.message !== undefined) updates.message = req.body.message;
+      if (req.body.subject !== undefined) updates.subject = req.body.subject;
 
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });
@@ -305,7 +296,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Lead not found" });
       }
       res.json(lead);
-      fireWebhooks("lead.updated", { id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, vehicle: lead.vehicle, status: lead.status, changes: Object.keys(updates) });
+      fireWebhooks("lead.updated", { id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, status: lead.status, changes: Object.keys(updates) });
       if (updates.status === "Delivered") {
         sendSentimentSurvey({ id: lead.id, name: lead.name, email: lead.email });
       }
@@ -452,19 +443,17 @@ export async function registerRoutes(
       })();
       const servicesContext = blogServices.length > 0
         ? blogServices.map((s) => s.title + (s.description ? `: ${s.description}` : "")).join("; ")
-        : "custom turf design & installation, foundation repair, interior remodeling, outdoor remodeling, bespoke outdoor living spaces, turf & pavers";
+        : "abstract canvas painting, life-like portraiture, 3D art installations, copper sculptures, mixed media";
 
       const job = await storage.createAiJob({ type: "article", input: JSON.stringify({ topic, keywords, tone }) });
 
-      const systemPrompt = `You are an expert renovation content writer for Reign Services, DFW's premier interior and exterior renovation contractor. Write authoritative, professional blog articles about the following active services: ${servicesContext}.
+      const systemPrompt = `You are an expert art writer and content strategist for an independent contemporary artist. Write authoritative, eloquent blog articles about art, the creative process, and the artist's work. Context about the artist's mediums: ${servicesContext}.
 
 Rules:
-- Write in a controlled, confident tone. No exclamation points. No sales hype.
-- Use substantive, factual content. Include specific details about renovation techniques, material selection, and project execution.
-- Target Dallas-Fort Worth market when relevant.
+- Write in a thoughtful, evocative tone. No hype. No exclamation points.
+- Use substantive, specific content about art techniques, materials, artistic intent, and the viewer's experience.
 - Structure with H2 and H3 headings using markdown.
-- Only reference services from the active services list above when making internal links
-- Include internal links using proper markdown link syntax: [link text](/path). For example: [our services](/services), [contact us](/contact). Do NOT output raw URLs or bare paths.
+- Include internal links using proper markdown link syntax: [link text](/path). For example: [view the gallery](/gallery), [shop original works](/shop), [contact for commissions](/contact). Do NOT output raw URLs or bare paths.
 - Include a compelling excerpt (2 sentences max).
 - Suggest 3-5 relevant tags.
 - Suggest an SEO title (60 chars max) and meta description (155 chars max).
@@ -580,27 +569,24 @@ Respond in this exact JSON format:
           const blogServices: { title: string; description: string }[] = (() => { try { return blogServicesRaw ? JSON.parse(blogServicesRaw) : []; } catch { return []; } })();
           const activeServices = blogServices.length > 0
             ? blogServices.map((s) => s.title + (s.description ? `: ${s.description}` : "")).join("; ")
-            : "Custom Turf Design & Install; Foundation Repair; Interior Remodeling; Outdoor Remodeling; Bespoke Outdoor Living Spaces; Turf & Pavers";
+            : "Abstract Canvas Painting; Life-like Portraiture; 3D Art Installations; Copper Sculptures; Mixed Media";
 
-          const researchPrompt = `You are an expert SEO strategist and content marketing researcher for Reign Services, DFW's premier interior and exterior renovation contractor in Dallas-Fort Worth, Texas.
+          const researchPrompt = `You are an expert SEO strategist and content marketing researcher for an independent contemporary artist specializing in abstract canvas art, life-like portraits, 3D art installations, and sculptures using copper and other materials.
 
-Active services offered by Reign Services:
+Artist's mediums and focus areas:
 ${activeServices}
 
-First, review these active services thoroughly. Your research and topic suggestions must be directly relevant to these services only.
-
-Conduct thorough competitive and market research for the home renovation and outdoor living industry in DFW. Analyze:
-1. What topics competitors are ranking for across these specific services
-2. High-volume, low-competition keywords tied to these services in the DFW market
-3. Seasonal search trends relevant to these services (outdoor projects, interior renovations)
-4. Customer pain points and frequently asked questions about these specific services
-5. Local SEO opportunities in Dallas-Fort Worth for these renovation services
+Conduct thorough research on the contemporary art market. Analyze:
+1. What art-related topics drive engagement and discovery for collectors, art lovers, and buyers
+2. High-value, lower-competition keywords in the contemporary art and collector market
+3. Seasonal trends (art fairs, exhibitions, commission seasons)
+4. Buyer questions about original art, commissions, pricing, and collecting
+5. SEO opportunities around abstract art, portrait commissions, and sculptural work
 
 Then identify 5 highly effective article topics that will:
-- Drive organic search traffic specifically for these active services
-- Convert readers into free assessment requests
-- Target different services from the active list above
-- Include location-specific DFW angles where relevant
+- Drive organic search traffic from art collectors and enthusiasts
+- Convert readers into collectors or commission inquiries
+- Showcase the artist's unique mediums and process
 - Cover informational, commercial, and transactional intent
 
 For each topic provide:
@@ -1888,6 +1874,453 @@ Generate only the requested fields. Respond in this exact JSON format:
       res.json({ message: "Item deleted" });
     } catch {
       res.status(500).json({ message: "Failed to delete gallery item" });
+    }
+  });
+
+  // ─── Artwork Routes ──────────────────────────────────────────────
+
+  app.get("/api/artworks", async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const allArtworks = await storage.getArtworks(status);
+      res.json(allArtworks);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch artworks" });
+    }
+  });
+
+  app.get("/api/artworks/:idOrSlug", async (req, res) => {
+    try {
+      const param = req.params.idOrSlug;
+      const id = parseInt(param);
+      const artwork = isNaN(id) ? await storage.getArtworkBySlug(param) : await storage.getArtworkById(id);
+      if (!artwork) return res.status(404).json({ message: "Artwork not found" });
+      res.json(artwork);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch artwork" });
+    }
+  });
+
+  app.post("/api/artworks", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
+    try {
+      const { title, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, category, featured, seoTitle, seoDescription, seoKeywords } = req.body;
+      if (!title) return res.status(400).json({ message: "Title is required" });
+      let slug = slugify(title);
+      const existing = await storage.getArtworkBySlug(slug);
+      if (existing) slug = slug + "-" + Date.now().toString(36);
+      const artwork = await storage.createArtwork({
+        title,
+        slug,
+        medium: medium || "",
+        dimensions: dimensions || "",
+        year: year || null,
+        description: description || "",
+        imageUrl: imageUrl || "",
+        enhancedImageUrl: enhancedImageUrl || null,
+        price: price ? String(price) : null,
+        forSale: forSale ?? false,
+        sold: false,
+        status: "draft",
+        category: category || "Abstract",
+        featured: featured ?? false,
+        seoTitle: seoTitle || null,
+        seoDescription: seoDescription || null,
+        seoKeywords: seoKeywords || [],
+        publishedAt: null,
+      });
+      res.status(201).json(artwork);
+    } catch {
+      res.status(500).json({ message: "Failed to create artwork" });
+    }
+  });
+
+  app.patch("/api/artworks/:id", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid artwork ID" });
+      const fields = ["title", "medium", "dimensions", "year", "description", "imageUrl", "enhancedImageUrl", "price", "forSale", "sold", "status", "category", "featured", "seoTitle", "seoDescription", "seoKeywords", "stripeProductId", "stripePriceId"];
+      const updates: Record<string, any> = {};
+      for (const f of fields) {
+        if (req.body[f] !== undefined) updates[f] = req.body[f];
+      }
+      if (updates.status === "published") {
+        const existing = await storage.getArtworkById(id);
+        if (existing && !existing.publishedAt) {
+          updates.publishedAt = new Date();
+          // Auto-create page registry entry
+          const existing2 = await storage.getArtworkById(id);
+          const artworkSlug = `shop/${existing2?.slug || id}`;
+          const existingPage = await storage.getPageBySlug(artworkSlug);
+          if (!existingPage && existing2) {
+            const page = await storage.createPage({
+              slug: artworkSlug,
+              title: existing2.title,
+              pageType: "artwork",
+              seoTitle: existing2.seoTitle || existing2.title,
+              seoDescription: existing2.seoDescription || existing2.description.substring(0, 155),
+              seoKeywords: existing2.seoKeywords || [],
+              status: "published",
+              linkedEntityId: id,
+              linkedEntityType: "artwork",
+            });
+            updates.pageRegistryId = page.id;
+          }
+        }
+      }
+      if (updates.title) {
+        const slug2 = slugify(updates.title);
+        const existingSlug = await storage.getArtworkBySlug(slug2);
+        updates.slug = (existingSlug && existingSlug.id !== id) ? slug2 + "-" + Date.now().toString(36) : slug2;
+      }
+      const artwork = await storage.updateArtwork(id, updates);
+      if (!artwork) return res.status(404).json({ message: "Artwork not found" });
+      if (updates.status === "published") {
+        fireWebhooks("artwork.published", { id: artwork.id, title: artwork.title, slug: artwork.slug, category: artwork.category });
+      }
+      res.json(artwork);
+    } catch {
+      res.status(500).json({ message: "Failed to update artwork" });
+    }
+  });
+
+  app.delete("/api/artworks/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid artwork ID" });
+      await storage.deleteArtwork(id);
+      res.json({ message: "Artwork deleted" });
+    } catch {
+      res.status(500).json({ message: "Failed to delete artwork" });
+    }
+  });
+
+  app.post("/api/artworks/:id/view", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (!isNaN(id)) await storage.incrementArtworkViewCount(id);
+      res.json({ ok: true });
+    } catch {
+      res.json({ ok: true });
+    }
+  });
+
+  // ─── Image Upload ──────────────────────────────────────────────
+
+  app.post("/api/upload", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
+    try {
+      const { imageData, filename } = req.body;
+      if (!imageData) return res.status(400).json({ message: "imageData is required" });
+      const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+      const ext = imageData.match(/data:image\/(\w+);/)?.[1] || "jpg";
+      const safeName = (filename || `upload-${Date.now()}`).replace(/[^a-zA-Z0-9-_]/g, "-") + "." + ext;
+      const uploadDir = path.join(process.cwd(), "client", "public", "uploads");
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      const filePath = path.join(uploadDir, safeName);
+      fs.writeFileSync(filePath, buffer);
+      res.json({ url: `/uploads/${safeName}` });
+    } catch (e: any) {
+      res.status(500).json({ message: "Upload failed", error: e?.message });
+    }
+  });
+
+  // ─── AI Artwork Enhancement & Description ────────────────────
+
+  app.post("/api/ai/enhance-artwork", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
+    try {
+      const { imageUrl, title, medium, dimensions } = req.body;
+      if (!imageUrl) return res.status(400).json({ message: "imageUrl is required" });
+
+      // Build absolute URL for the image if it's a relative path
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DEPLOYMENT_URL
+        ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+        : "http://localhost:5000";
+      const absoluteImageUrl = imageUrl.startsWith("http") ? imageUrl : `${baseUrl}${imageUrl}`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: absoluteImageUrl, detail: "high" },
+              },
+              {
+                type: "text",
+                text: `You are an expert art curator and writer. Analyze this artwork${title ? ` titled "${title}"` : ""}${medium ? ` created in ${medium}` : ""}${dimensions ? ` with dimensions ${dimensions}` : ""}.
+
+Generate comprehensive artwork metadata. Respond in JSON:
+{
+  "description": "2-3 paragraph artistic description covering composition, technique, emotional impact, and what makes this work unique. No exclamation points.",
+  "seoTitle": "SEO title under 60 chars (artwork title + medium)",
+  "seoDescription": "Compelling meta description 140-155 chars for collectors and art lovers",
+  "seoKeywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6"],
+  "captureScore": 85,
+  "captureNotes": "Assessment of image quality for listing purposes",
+  "suggestedPrice": 2500
+}
+
+For captureScore: 0-100 rating of how well the photo captures the artwork for online sale.
+For suggestedPrice: Based on apparent medium, size, and complexity — suggest a fair market price in USD.`,
+              },
+            ],
+          },
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 1024,
+      });
+
+      const raw = response.choices[0]?.message?.content || "{}";
+      let result: { description?: string; seoTitle?: string; seoDescription?: string; seoKeywords?: string[]; captureScore?: number; captureNotes?: string; suggestedPrice?: number };
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        result = {};
+      }
+
+      res.json(result);
+    } catch (e: any) {
+      console.error("AI enhance error:", e?.message);
+      res.status(500).json({ message: "AI analysis failed", error: e?.message });
+    }
+  });
+
+  // ─── AI Capture Guidance ──────────────────────────────────────
+
+  app.post("/api/ai/capture-guidance", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
+    try {
+      const { imageData } = req.body;
+      if (!imageData) return res.status(400).json({ message: "imageData is required" });
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: imageData, detail: "low" },
+              },
+              {
+                type: "text",
+                text: `You are helping an artist capture a photo of their artwork for sale online. Analyze this camera preview image and provide real-time guidance.
+
+Respond in JSON:
+{
+  "score": 72,
+  "ready": false,
+  "issues": ["Too close — step back to show full artwork", "Lighting uneven on right side"],
+  "tips": ["Move camera back until the full piece is visible", "Turn on room lights or open blinds"],
+  "frameGuide": "center"
+}
+
+score: 0-100 photo quality score for artwork listing
+ready: true if score >= 80 and no major issues
+issues: list of current problems (max 3, be specific)
+tips: actionable steps to fix (max 2)
+frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_out", "zoom_in"`,
+              },
+            ],
+          },
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 256,
+      });
+
+      const raw = response.choices[0]?.message?.content || "{}";
+      let result;
+      try { result = JSON.parse(raw); } catch { result = { score: 50, ready: false, issues: ["Could not analyze"], tips: ["Try again"], frameGuide: "center" }; }
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: "Guidance failed", error: e?.message });
+    }
+  });
+
+  // ─── Analytics Events ─────────────────────────────────────────
+
+  app.post("/api/analytics/event", async (req, res) => {
+    try {
+      const { page, eventType, sessionId, referrer, utmSource, utmMedium, utmCampaign, metadata } = req.body;
+      if (!page || !eventType) return res.status(400).json({ message: "page and eventType required" });
+      await storage.trackEvent({ page, eventType, sessionId, referrer, utmSource, utmMedium, utmCampaign, metadata });
+      res.json({ ok: true });
+    } catch {
+      res.json({ ok: true });
+    }
+  });
+
+  app.get("/api/analytics/summary", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const summary = await storage.getAnalyticsSummary(days);
+      res.json(summary);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  // ─── Page Registry ────────────────────────────────────────────
+
+  app.get("/api/pages", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
+    try {
+      const pages = await storage.getPageRegistry();
+      res.json(pages);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch pages" });
+    }
+  });
+
+  app.post("/api/pages", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const { slug, title, pageType, seoTitle, seoDescription, seoKeywords, status, linkedEntityId, linkedEntityType } = req.body;
+      if (!slug || !title) return res.status(400).json({ message: "slug and title required" });
+      const page = await storage.createPage({ slug, title, pageType: pageType || "static", seoTitle, seoDescription, seoKeywords, status: status || "published", linkedEntityId, linkedEntityType });
+      res.status(201).json(page);
+    } catch {
+      res.status(500).json({ message: "Failed to create page" });
+    }
+  });
+
+  app.patch("/api/pages/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid page ID" });
+      const fields = ["slug", "title", "pageType", "seoTitle", "seoDescription", "seoKeywords", "status"];
+      const updates: Record<string, any> = {};
+      for (const f of fields) { if (req.body[f] !== undefined) updates[f] = req.body[f]; }
+      const page = await storage.updatePage(id, updates);
+      if (!page) return res.status(404).json({ message: "Page not found" });
+      res.json(page);
+    } catch {
+      res.status(500).json({ message: "Failed to update page" });
+    }
+  });
+
+  app.delete("/api/pages/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid page ID" });
+      await storage.deletePage(id);
+      res.json({ message: "Page deleted" });
+    } catch {
+      res.status(500).json({ message: "Failed to delete page" });
+    }
+  });
+
+  // ─── Stripe Checkout ──────────────────────────────────────────
+
+  app.post("/api/checkout", async (req, res) => {
+    try {
+      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeKey) {
+        return res.status(503).json({ message: "Payments not configured. Please connect Stripe to enable purchases." });
+      }
+      const Stripe = require("stripe");
+      const stripe = new Stripe(stripeKey);
+
+      const { artworkId, buyerName, buyerEmail, shippingAddress } = req.body;
+      if (!artworkId) return res.status(400).json({ message: "artworkId required" });
+      const artwork = await storage.getArtworkById(parseInt(artworkId));
+      if (!artwork) return res.status(404).json({ message: "Artwork not found" });
+      if (!artwork.forSale || artwork.sold) return res.status(400).json({ message: "Artwork not available for purchase" });
+      if (!artwork.price) return res.status(400).json({ message: "Artwork has no price set" });
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DEPLOYMENT_URL
+        ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+        : "http://localhost:5000";
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: artwork.title,
+              description: artwork.description.substring(0, 200) || `Original artwork — ${artwork.medium}`,
+              images: artwork.enhancedImageUrl ? [artwork.enhancedImageUrl.startsWith("http") ? artwork.enhancedImageUrl : `${baseUrl}${artwork.enhancedImageUrl}`] : artwork.imageUrl ? [artwork.imageUrl.startsWith("http") ? artwork.imageUrl : `${baseUrl}${artwork.imageUrl}`] : [],
+            },
+            unit_amount: Math.round(parseFloat(String(artwork.price)) * 100),
+          },
+          quantity: 1,
+        }],
+        customer_email: buyerEmail || undefined,
+        metadata: { artworkId: String(artwork.id), buyerName: buyerName || "", shippingAddress: shippingAddress || "" },
+        success_url: `${baseUrl}/shop/${artwork.slug}?purchased=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/shop/${artwork.slug}?cancelled=true`,
+      });
+
+      // Pre-create order record
+      if (buyerEmail && buyerName) {
+        await storage.createOrder({
+          artworkId: artwork.id,
+          buyerName,
+          buyerEmail,
+          amount: String(artwork.price),
+          stripeSessionId: session.id,
+          shippingAddress: shippingAddress || null,
+        });
+      }
+
+      res.json({ url: session.url, sessionId: session.id });
+    } catch (e: any) {
+      console.error("Checkout error:", e?.message);
+      res.status(500).json({ message: "Failed to create checkout session", error: e?.message });
+    }
+  });
+
+  app.post("/api/checkout/webhook", async (req, res) => {
+    try {
+      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      if (!stripeKey) return res.status(200).json({ received: true });
+
+      const Stripe = require("stripe");
+      const stripe = new Stripe(stripeKey);
+      let event;
+
+      if (webhookSecret) {
+        const sig = req.headers["stripe-signature"];
+        try {
+          event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+        } catch {
+          return res.status(400).json({ message: "Webhook signature invalid" });
+        }
+      } else {
+        event = req.body;
+      }
+
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const artworkId = parseInt(session.metadata?.artworkId);
+        if (artworkId) {
+          await storage.updateArtwork(artworkId, { sold: true });
+          const order = await storage.getOrderBySessionId(session.id);
+          if (order) {
+            await storage.updateOrder(order.id, { status: "paid", stripePaymentIntentId: session.payment_intent });
+          }
+          await storage.trackEvent({ page: `/shop`, eventType: "purchase", metadata: JSON.stringify({ artworkId, sessionId: session.id }) });
+          fireWebhooks("order.created", { artworkId, sessionId: session.id, amount: session.amount_total });
+        }
+      }
+      res.json({ received: true });
+    } catch (e: any) {
+      res.status(500).json({ message: "Webhook error" });
+    }
+  });
+
+  app.get("/api/orders", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
+    try {
+      const allOrders = await storage.getOrders();
+      res.json(allOrders);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch orders" });
     }
   });
 

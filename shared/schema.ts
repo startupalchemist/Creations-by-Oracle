@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, serial, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, serial, boolean, integer, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -8,17 +8,13 @@ export const leads = pgTable("leads", {
   name: text("name").notNull(),
   phone: text("phone").notNull(),
   email: text("email").notNull(),
-  vehicle: text("vehicle").notNull(),
-  insurance: text("insurance"),
+  subject: text("subject").notNull().default("General Inquiry"),
   message: text("message"),
-  status: text("status").notNull().default("New Lead"),
-  loanerRequested: boolean("loaner_requested").default(false),
-  pickupRequested: boolean("pickup_requested").default(false),
-  insuranceApproved: boolean("insurance_approved").default(false),
-  insuranceApprovalTimestamp: timestamp("insurance_approval_timestamp"),
+  status: text("status").notNull().default("New Inquiry"),
   utmSource: text("utm_source"),
   utmMedium: text("utm_medium"),
   utmCampaign: text("utm_campaign"),
+  artworkId: integer("artwork_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -26,35 +22,18 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
   id: true,
   createdAt: true,
   status: true,
-  loanerRequested: true,
-  pickupRequested: true,
-  insuranceApproved: true,
-  insuranceApprovalTimestamp: true,
 });
 
 export type InsertLead = z.infer<typeof insertLeadSchema>;
 export type Lead = typeof leads.$inferSelect;
 
 export const leadStatuses = [
-  "New Lead",
-  "Sale Closed",
-  "Claim Initiated",
-  "RA Signed",
-  "Loaner Assigned",
-  "Vehicle In Shop",
-  "Scoped",
-  "Estimate Sent",
-  "First Look",
-  "Supplement Submitted",
-  "Awaiting Approval",
-  "Approved",
-  "R&I",
-  "PDR",
-  "QC 1",
-  "Reinstall",
-  "QC 2",
-  "Detail",
-  "Ready for Delivery",
+  "New Inquiry",
+  "Contacted",
+  "Commission Proposed",
+  "Commission Accepted",
+  "In Progress",
+  "Awaiting Payment",
   "Delivered",
   "Closed",
 ] as const;
@@ -227,7 +206,7 @@ export const backlinkClicks = pgTable("backlink_clicks", {
 
 export type BacklinkClick = typeof backlinkClicks.$inferSelect;
 
-export const webhookEvents = ["lead.created", "lead.updated", "post.published", "subscriber.created"] as const;
+export const webhookEvents = ["lead.created", "lead.updated", "post.published", "subscriber.created", "artwork.published", "order.created"] as const;
 
 export const webhooks = pgTable("webhooks", {
   id: serial("id").primaryKey(),
@@ -288,9 +267,9 @@ export const services = pgTable("services", {
   header: text("header").notNull().default(""),
   description: text("description").notNull().default(""),
   keyDetails: text("key_details").array().default(sql`'{}'::text[]`),
-  icon: text("icon").notNull().default("Wrench"),
+  icon: text("icon").notNull().default("Palette"),
   slug: text("slug").notNull().default(""),
-  accentColor: text("accent_color").notNull().default("#5D3FD3"),
+  accentColor: text("accent_color").notNull().default("#C084FC"),
   showPrice: boolean("show_price").notNull().default(false),
   price: text("price"),
   isActive: boolean("is_active").notNull().default(true),
@@ -346,3 +325,114 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const artworks = pgTable("artworks", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  slug: text("slug").notNull().unique(),
+  medium: text("medium").notNull().default(""),
+  dimensions: text("dimensions").notNull().default(""),
+  year: text("year"),
+  description: text("description").notNull().default(""),
+  imageUrl: text("image_url").notNull().default(""),
+  enhancedImageUrl: text("enhanced_image_url"),
+  price: numeric("price", { precision: 10, scale: 2 }),
+  forSale: boolean("for_sale").notNull().default(false),
+  sold: boolean("sold").notNull().default(false),
+  status: text("status").notNull().default("draft"),
+  seoTitle: text("seo_title"),
+  seoDescription: text("seo_description"),
+  seoKeywords: text("seo_keywords").array().default(sql`'{}'::text[]`),
+  stripeProductId: text("stripe_product_id"),
+  stripePriceId: text("stripe_price_id"),
+  category: text("category").notNull().default("Abstract"),
+  featured: boolean("featured").notNull().default(false),
+  pageRegistryId: integer("page_registry_id"),
+  viewCount: integer("view_count").notNull().default(0),
+  publishedAt: timestamp("published_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertArtworkSchema = createInsertSchema(artworks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  stripeProductId: true,
+  stripePriceId: true,
+  pageRegistryId: true,
+  viewCount: true,
+});
+
+export type InsertArtwork = z.infer<typeof insertArtworkSchema>;
+export type Artwork = typeof artworks.$inferSelect;
+
+export const artworkStatuses = ["draft", "published", "archived"] as const;
+export const artworkCategories = ["Abstract", "Portrait", "3D Installation", "Sculpture", "Mixed Media"] as const;
+
+export const orders = pgTable("orders", {
+  id: serial("id").primaryKey(),
+  artworkId: integer("artwork_id").notNull().references(() => artworks.id),
+  buyerName: text("buyer_name").notNull(),
+  buyerEmail: text("buyer_email").notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("usd"),
+  stripeSessionId: text("stripe_session_id").notNull().unique(),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  status: text("status").notNull().default("pending"),
+  shippingAddress: text("shipping_address"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Order = typeof orders.$inferSelect;
+
+export const orderStatuses = ["pending", "paid", "fulfilled", "cancelled"] as const;
+
+export const analyticsEvents = pgTable("analytics_events", {
+  id: serial("id").primaryKey(),
+  page: text("page").notNull(),
+  eventType: text("event_type").notNull(),
+  sessionId: text("session_id"),
+  referrer: text("referrer"),
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  metadata: text("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
+
+export const analyticsEventTypes = ["page_view", "cta_click", "cta_submit", "purchase", "gallery_view", "artwork_view", "contact_submit"] as const;
+
+export const pageRegistry = pgTable("page_registry", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  pageType: text("page_type").notNull().default("static"),
+  seoTitle: text("seo_title"),
+  seoDescription: text("seo_description"),
+  seoKeywords: text("seo_keywords").array().default(sql`'{}'::text[]`),
+  status: text("status").notNull().default("published"),
+  linkedEntityId: integer("linked_entity_id"),
+  linkedEntityType: text("linked_entity_type"),
+  viewCount: integer("view_count").notNull().default(0),
+  ctaClickCount: integer("cta_click_count").notNull().default(0),
+  conversionCount: integer("conversion_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPageRegistrySchema = createInsertSchema(pageRegistry).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  viewCount: true,
+  ctaClickCount: true,
+  conversionCount: true,
+});
+
+export type InsertPageRegistry = z.infer<typeof insertPageRegistrySchema>;
+export type PageRegistry = typeof pageRegistry.$inferSelect;
+
+export const pageTypes = ["static", "blog", "artwork", "service"] as const;

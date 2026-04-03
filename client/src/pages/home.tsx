@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import {
-  Leaf, Home as HomeIcon, Wrench, Sun, Trees, Square, Shield, Star, MapPin, ChevronRight,
-} from "lucide-react";
+import { ArrowRight, Eye, ShoppingBag, Palette, Layers } from "lucide-react";
+import type { Artwork } from "@shared/schema";
 
 function useInView(threshold = 0.15) {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
-
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -19,499 +18,347 @@ function useInView(threshold = 0.15) {
     observer.observe(el);
     return () => observer.disconnect();
   }, [threshold]);
-
   return { ref, inView };
 }
 
 function HeroSection() {
   const [visible, setVisible] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 80);
     return () => clearTimeout(t);
   }, []);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = true;
-    const tryPlay = () => { video.play().catch(() => {}); };
-    if (video.readyState >= 3) {
-      tryPlay();
-    } else {
-      video.addEventListener("canplay", tryPlay, { once: true });
-    }
-    return () => video.removeEventListener("canplay", tryPlay);
-  }, []);
-
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden" data-testid="section-hero">
-      <div className="absolute inset-0 bg-[#070b14]" />
+      <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #08060e 0%, #0e0818 40%, #12091a 70%, #0a0612 100%)" }} />
 
-      <video
-        ref={videoRef}
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{ opacity: 0.35 }}
-        data-testid="video-hero-background"
-        onCanPlay={() => { videoRef.current?.play().catch(() => {}); }}
-      >
-        <source src="/hero.mp4" type="video/mp4" />
-      </video>
+      {/* Abstract art background pattern */}
+      <div className="absolute inset-0 opacity-20" style={{
+        backgroundImage: `
+          radial-gradient(ellipse 60% 40% at 20% 30%, rgba(192, 132, 252, 0.3) 0%, transparent 60%),
+          radial-gradient(ellipse 50% 60% at 80% 70%, rgba(139, 92, 246, 0.2) 0%, transparent 60%),
+          radial-gradient(ellipse 40% 30% at 60% 20%, rgba(216, 180, 254, 0.15) 0%, transparent 50%)
+        `,
+      }} />
 
       <div
-        className="absolute inset-0"
-        style={{
-          background: "rgba(10, 31, 68, 0.05)",
-          backdropFilter: "blur(2px)",
-          WebkitBackdropFilter: "blur(2px)",
-          backgroundImage: "linear-gradient(180deg, rgba(10,31,68,0.05) 0%, rgba(10,31,68,0.12) 100%)",
-        }}
-      />
-
-      <div className="absolute inset-0 bg-gradient-to-b from-[#070b14]/60 via-[#0A1F44]/5 to-[#070b14]/80" />
-
-      <div
-        className="relative z-10 text-center px-6 max-w-5xl mx-auto"
-        style={{
-          opacity: visible ? 1 : 0,
-          transform: visible ? "translateY(0)" : "translateY(28px)",
-          transition: "opacity 1s ease-out, transform 1s ease-out",
-        }}
+        className={`relative z-10 text-center px-6 max-w-4xl mx-auto transition-all duration-1000 ${
+          visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+        }`}
       >
-        <div
-          className="inline-flex items-center gap-2 mb-6 px-4 py-1.5 rounded-full border border-[#5D3FD3]/40 bg-[#5D3FD3]/10 backdrop-blur-sm"
-          style={{
-            opacity: visible ? 1 : 0,
-            transform: visible ? "translateY(0)" : "translateY(12px)",
-            transition: "opacity 0.9s ease-out 0.1s, transform 0.9s ease-out 0.1s",
-          }}
-        >
-          <span className="text-[10px] uppercase tracking-[0.25em] text-[#5D3FD3] font-semibold">
-            Dallas-Fort Worth's Premier Contractor
+        <div className="mb-8">
+          <span className="inline-block text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/60 mb-6">
+            Original Works
           </span>
-        </div>
-
-        <h1
-          className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-extrabold uppercase tracking-tight text-white leading-[0.95]"
-          data-testid="text-hero-headline"
-          style={{
-            fontFamily: "Poppins, sans-serif",
-            opacity: visible ? 1 : 0,
-            transform: visible ? "translateY(0)" : "translateY(20px)",
-            transition: "opacity 1s ease-out 0.2s, transform 1s ease-out 0.2s",
-          }}
-        >
-          Transform Your
-          <span
-            className="block text-transparent bg-clip-text"
-            style={{ backgroundImage: "linear-gradient(135deg, #5D3FD3 0%, #0A1F44 100%)" }}
+          <h1
+            className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-light text-white leading-[0.95] tracking-tight mb-8"
+            style={{ fontFamily: "Georgia, serif" }}
+            data-testid="heading-hero"
           >
-            Space.
-          </span>
-        </h1>
-
-        <div
-          className="mt-8 space-y-2"
-          style={{
-            opacity: visible ? 1 : 0,
-            transform: visible ? "translateY(0)" : "translateY(16px)",
-            transition: "opacity 1s ease-out 0.4s, transform 1s ease-out 0.4s",
-          }}
-        >
-          <p className="text-xl sm:text-2xl text-[#B3B3B8] font-light tracking-wide">
-            Residential &amp; commercial renovations across DFW.
-          </p>
-          <p className="text-lg text-white/70 font-medium tracking-wide">
-            Custom turf. Foundation repair. Interior &amp; outdoor remodeling.
+            Art that
+            <br />
+            <span className="italic text-[#C084FC]">transcends</span>
+            <br />
+            the frame.
+          </h1>
+          <p className="text-[#B3B3B8]/70 text-base sm:text-lg max-w-xl mx-auto leading-relaxed font-light" data-testid="text-hero-subtitle">
+            Abstract canvas works, life-like portraits, and sculptural installations crafted in copper and reclaimed materials.
           </p>
         </div>
 
-        <div
-          className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
-          style={{
-            opacity: visible ? 1 : 0,
-            transform: visible ? "translateY(0)" : "translateY(16px)",
-            transition: "opacity 1s ease-out 0.55s, transform 1s ease-out 0.55s",
-          }}
-        >
-          <Link href="/contact?utm_source=website&utm_medium=hero&utm_campaign=homepage">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10" data-testid="div-hero-ctas">
+          <Link href="/shop">
             <Button
-              className="bg-[#5D3FD3] hover:bg-[#4a32a8] text-white border-0 text-sm uppercase tracking-[0.15em] font-semibold px-10 py-6"
-              data-testid="button-assessment-hero"
+              className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em] font-semibold px-8 py-3 h-auto"
+              data-testid="button-shop-hero"
             >
-              Book Free Assessment
+              <ShoppingBag className="w-3.5 h-3.5 mr-2" />
+              Explore the Shop
             </Button>
           </Link>
-          <Link href="/contact?utm_source=website&utm_medium=hero_secondary&utm_campaign=homepage">
+          <Link href="/gallery">
             <Button
               variant="ghost"
-              className="text-white border border-white/20 hover:bg-white/5 text-sm uppercase tracking-[0.15em] font-semibold px-8 py-6"
-              data-testid="button-chat-hero"
+              className="text-[#B3B3B8] hover:text-white border border-white/15 hover:border-white/30 text-xs uppercase tracking-[0.2em] font-semibold px-8 py-3 h-auto"
+              data-testid="button-gallery-hero"
             >
-              Chat With Our Team
+              <Eye className="w-3.5 h-3.5 mr-2" />
+              View Gallery
             </Button>
           </Link>
-        </div>
-
-        <p
-          className="mt-5 text-xs text-white/30 tracking-wide"
-          style={{
-            opacity: visible ? 1 : 0,
-            transition: "opacity 1s ease-out 0.7s",
-          }}
-        >
-          Free assessment. No obligation. We serve all of DFW.
-        </p>
-
-        <div
-          className="mt-8 flex items-center justify-center"
-          style={{
-            opacity: visible ? 1 : 0,
-            transition: "opacity 1s ease-out 0.85s",
-          }}
-        >
-          <a
-            href="https://tachyonbuilt.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="link-truetrade-hero"
-            className="group"
-          >
-            <img
-              src="/truetrade-certified-nobg.png"
-              alt="TrueTrade Certified 11.7"
-              className="h-16 w-auto opacity-80 group-hover:opacity-100 transition-opacity duration-300"
-            />
-          </a>
         </div>
       </div>
 
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce opacity-40">
-        <div className="w-px h-8 bg-gradient-to-b from-transparent to-white" />
+      <div className="absolute bottom-10 left-1/2 -translate-x-1/2">
+        <div className="w-px h-16 bg-gradient-to-b from-transparent via-[#C084FC]/40 to-transparent" />
       </div>
     </section>
   );
 }
 
-const services = [
-  {
-    icon: Leaf,
-    title: "Custom Turf Design & Install",
-    desc: "Bespoke artificial turf installations for residential yards and commercial properties. Full design, soil removal, and professional installation.",
-    href: "/custom-turf-install",
-    color: "#5D3FD3",
-  },
-  {
-    icon: HomeIcon,
-    title: "Foundation Repair",
-    desc: "Expert structural solutions for DFW's unique soil conditions. Pier and beam, slab repair, drainage correction. Protect your investment.",
-    href: "/foundation-repair",
-    color: "#0A1F44",
-  },
-  {
-    icon: Wrench,
-    title: "Interior Remodeling",
-    desc: "Full interior transformations including kitchen and bathroom renovations, flooring, cabinetry, and custom finishes for residential and commercial spaces.",
-    href: "/interior-remodeling",
-    color: "#5D3FD3",
-  },
-  {
-    icon: Sun,
-    title: "Outdoor Remodeling",
-    desc: "Elevate your exterior with professional deck, patio, pergola, and landscape renovations tailored to DFW's climate and your lifestyle.",
-    href: "/outdoor-remodeling",
-    color: "#0A1F44",
-  },
-  {
-    icon: Trees,
-    title: "Bespoke Outdoor Living",
-    desc: "Custom outdoor kitchens, covered pavilions, fire features, and entertainment spaces. Turn your backyard into a private retreat.",
-    href: "/outdoor-living",
-    color: "#5D3FD3",
-  },
-  {
-    icon: Square,
-    title: "Turf & Pavers",
-    desc: "Premium turf and paver combinations for driveways, walkways, pool surrounds, and commercial hardscaping. Low-maintenance. High-impact.",
-    href: "/turf-and-pavers",
-    color: "#0A1F44",
-  },
-];
-
-function ServicesSection() {
-  const { ref: headRef, inView: headIn } = useInView(0.2);
-  const { ref: gridRef, inView: gridIn } = useInView(0.1);
+function MediumsSection() {
+  const { ref, inView } = useInView();
+  const mediums = [
+    {
+      icon: <Palette className="w-5 h-5" />,
+      label: "Abstract Canvas",
+      desc: "Large-scale works exploring color, texture, and emotional resonance through layered paint and mixed media.",
+      href: "/shop?category=Abstract",
+    },
+    {
+      icon: <Eye className="w-5 h-5" />,
+      label: "Life-like Portraits",
+      desc: "Hyper-realistic portraiture capturing the nuance and depth of the human form with photographic precision.",
+      href: "/shop?category=Portrait",
+    },
+    {
+      icon: <Layers className="w-5 h-5" />,
+      label: "3D Installations",
+      desc: "Immersive sculptural installations that engage and reshape the experience of interior and exterior space.",
+      href: "/shop?category=3D+Installation",
+    },
+    {
+      icon: <div className="w-5 h-5 flex items-center justify-center text-xs font-bold">Cu</div>,
+      label: "Copper Sculpture",
+      desc: "Hand-formed sculptures in copper and reclaimed materials — each piece a conversation between material and form.",
+      href: "/shop?category=Sculpture",
+    },
+  ];
 
   return (
-    <section className="py-24 lg:py-40 bg-[#0B0B0D]" data-testid="section-services">
+    <section className="py-24 lg:py-32 bg-[#08060e]" data-testid="section-mediums">
       <div className="max-w-7xl mx-auto px-6 lg:px-10">
-        <div
-          ref={headRef}
-          className="text-center mb-16 lg:mb-24"
-          style={{
-            opacity: headIn ? 1 : 0,
-            transform: headIn ? "translateY(0)" : "translateY(32px)",
-            transition: "opacity 0.8s ease-out, transform 0.8s ease-out",
-          }}
-        >
-          <span className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold">
-            What We Do
-          </span>
-          <h2
-            className="mt-4 text-3xl sm:text-4xl lg:text-5xl font-bold text-white uppercase tracking-tight"
-            style={{ fontFamily: "Poppins, sans-serif" }}
-          >
-            Full-Spectrum Renovation
-          </h2>
-          <p className="mt-4 text-[#B3B3B8] text-lg max-w-2xl mx-auto">
-            From custom turf and outdoor living to foundation repair and interior transformation — one trusted team, across all of DFW.
-          </p>
-        </div>
+        <div ref={ref} className={`transition-all duration-700 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+          <div className="text-center mb-16">
+            <span className="text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/50 block mb-3">Mediums</span>
+            <h2 className="text-3xl sm:text-4xl font-light text-white" style={{ fontFamily: "Georgia, serif" }}>
+              The Work
+            </h2>
+          </div>
 
-        <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {services.map((service, i) => (
-            <Link key={i} href={service.href}>
-              <div
-                className="group p-7 rounded-xl cursor-pointer h-full flex flex-col transition-colors duration-300 hover:border-white/20"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  backdropFilter: "blur(8px)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  opacity: gridIn ? 1 : 0,
-                  transform: gridIn ? "translateY(0)" : "translateY(40px)",
-                  transition: `opacity 0.7s ease-out ${i * 0.1}s, transform 0.7s ease-out ${i * 0.1}s, border-color 0.3s`,
-                }}
-                data-testid={`card-service-${i}`}
-              >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {mediums.map((m, i) => (
+              <Link key={m.label} href={m.href}>
                 <div
-                  className="w-12 h-12 rounded-lg flex items-center justify-center mb-5 transition-transform duration-300 group-hover:scale-105"
-                  style={{ background: `${service.color}20` }}
+                  className="group border border-white/8 rounded-sm p-6 hover:border-[#C084FC]/30 transition-all duration-300 cursor-pointer h-full"
+                  style={{ background: "rgba(255,255,255,0.02)" }}
+                  data-testid={`card-medium-${i}`}
                 >
-                  <service.icon className="w-6 h-6" style={{ color: service.color }} />
+                  <div className="text-[#C084FC]/60 mb-4 group-hover:text-[#C084FC] transition-colors">{m.icon}</div>
+                  <h3 className="text-[#F5F5F7] text-sm font-medium tracking-wide mb-3">{m.label}</h3>
+                  <p className="text-[#B3B3B8]/60 text-xs leading-relaxed">{m.desc}</p>
+                  <div className="mt-4 flex items-center gap-1 text-[#C084FC]/40 group-hover:text-[#C084FC] transition-colors">
+                    <span className="text-[10px] uppercase tracking-[0.2em]">Explore</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </div>
                 </div>
-                <h3 className="text-sm uppercase tracking-[0.08em] font-semibold text-white mb-3">
-                  {service.title}
-                </h3>
-                <p className="text-[#B3B3B8]/70 text-sm leading-relaxed flex-1">
-                  {service.desc}
-                </p>
-                <span
-                  className="mt-4 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.1em] transition-transform group-hover:translate-x-1"
-                  style={{ color: service.color }}
-                >
-                  Learn More <ChevronRight className="w-3 h-3" />
-                </span>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-function TrustSection() {
-  const reasons = [
-    {
-      icon: MapPin,
-      title: "Local DFW Experts",
-      desc: "We understand North Texas soil, climate, and HOA requirements. Local knowledge, premium results.",
-    },
-    {
-      icon: Shield,
-      title: "Residential & Commercial",
-      desc: "From single-family homes to multi-unit commercial properties. Licensed, bonded, and insured across DFW.",
-    },
-    {
-      icon: Star,
-      title: "No Pricing Surprises",
-      desc: "Every project begins with a free assessment and a detailed quote. You approve it before we lift a tool.",
-    },
-  ];
+function FeaturedWorksSection() {
+  const { ref, inView } = useInView();
+  const { data: artworks, isLoading } = useQuery<Artwork[]>({
+    queryKey: ["/api/artworks", "published"],
+    queryFn: () => fetch("/api/artworks?status=published").then((r) => r.json()),
+  });
 
-  const { ref: gridRef, inView: gridIn } = useInView(0.15);
+  const featured = artworks?.filter((a) => a.featured || a.forSale).slice(0, 3) || [];
 
   return (
-    <section className="py-24 lg:py-32 bg-background" data-testid="section-trust">
+    <section className="py-24 lg:py-32" style={{ background: "linear-gradient(180deg, #08060e 0%, #0c0915 100%)" }} data-testid="section-featured">
       <div className="max-w-7xl mx-auto px-6 lg:px-10">
-        <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {reasons.map((r, i) => (
-            <div
-              key={i}
-              className="p-8 rounded-xl"
-              style={{
-                background: "rgba(255,255,255,0.05)",
-                backdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,255,255,0.10)",
-                opacity: gridIn ? 1 : 0,
-                transform: gridIn ? "translateY(0) scale(1)" : "translateY(30px) scale(0.97)",
-                transition: `opacity 0.7s ease-out ${i * 0.15}s, transform 0.7s ease-out ${i * 0.15}s`,
-              }}
-              data-testid={`card-trust-${i}`}
-            >
-              <div className="w-10 h-10 rounded-md bg-[#5D3FD3]/15 flex items-center justify-center mb-5">
-                <r.icon className="w-5 h-5 text-[#5D3FD3]" />
-              </div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-white mb-3">
-                {r.title}
-              </h3>
-              <p className="text-[#B3B3B8]/70 text-sm leading-relaxed">
-                {r.desc}
-              </p>
+        <div ref={ref} className={`transition-all duration-700 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+          <div className="flex items-end justify-between mb-14">
+            <div>
+              <span className="text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/50 block mb-3">Available</span>
+              <h2 className="text-3xl sm:text-4xl font-light text-white" style={{ fontFamily: "Georgia, serif" }}>
+                Featured Works
+              </h2>
             </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ProcessSection() {
-  const steps = [
-    {
-      num: "01",
-      title: "Free Assessment",
-      desc: "We visit your property, evaluate the project scope, and document everything. No cost. No pressure.",
-    },
-    {
-      num: "02",
-      title: "Custom Proposal",
-      desc: "You receive a detailed, transparent quote before we begin. Residential and commercial scopes handled separately.",
-    },
-    {
-      num: "03",
-      title: "Professional Execution",
-      desc: "Our licensed crews execute with precision. Regular progress updates keep you informed every step of the way.",
-    },
-    {
-      num: "04",
-      title: "Final Walkthrough",
-      desc: "We complete a detailed walkthrough together. Your satisfaction is signed off before we close the project.",
-    },
-  ];
-
-  const { ref: headRef, inView: headIn } = useInView(0.2);
-  const { ref: gridRef, inView: gridIn } = useInView(0.1);
-
-  return (
-    <section className="py-24 lg:py-40 bg-[#0B0B0D]" data-testid="section-process">
-      <div className="max-w-7xl mx-auto px-6 lg:px-10">
-        <div
-          ref={headRef}
-          className="text-center mb-16 lg:mb-24"
-          style={{
-            opacity: headIn ? 1 : 0,
-            transform: headIn ? "translateY(0)" : "translateY(28px)",
-            transition: "opacity 0.8s ease-out, transform 0.8s ease-out",
-          }}
-        >
-          <span className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold">
-            How It Works
-          </span>
-          <h2
-            className="mt-4 text-3xl sm:text-4xl lg:text-5xl font-bold text-white uppercase tracking-tight"
-            style={{ fontFamily: "Poppins, sans-serif" }}
-          >
-            From Assessment to Completion
-          </h2>
-        </div>
-
-        <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {steps.map((step, i) => (
-            <div
-              key={i}
-              className="p-6 rounded-xl"
-              style={{
-                background: "rgba(255,255,255,0.04)",
-                backdropFilter: "blur(8px)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                opacity: gridIn ? 1 : 0,
-                transform: gridIn ? "translateY(0)" : "translateY(36px)",
-                transition: `opacity 0.65s ease-out ${i * 0.12}s, transform 0.65s ease-out ${i * 0.12}s`,
-              }}
-              data-testid={`card-process-${i}`}
-            >
-              <span
-                className="text-4xl font-extrabold text-[#5D3FD3]/25 block mb-4"
-                style={{ fontFamily: "Poppins, sans-serif" }}
-              >
-                {step.num}
+            <Link href="/shop">
+              <span className="hidden sm:flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-[#B3B3B8]/50 hover:text-[#C084FC] transition-colors cursor-pointer">
+                Shop All <ArrowRight className="w-3.5 h-3.5" />
               </span>
-              <h3 className="text-sm uppercase tracking-[0.08em] font-semibold text-white mb-3">
-                {step.title}
-              </h3>
-              <p className="text-[#B3B3B8]/65 text-sm leading-relaxed">
-                {step.desc}
-              </p>
+            </Link>
+          </div>
+
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="aspect-[3/4] rounded-sm bg-white/5 animate-pulse" />
+              ))}
             </div>
-          ))}
+          ) : featured.length === 0 ? (
+            <div className="text-center py-16 border border-white/8 rounded-sm">
+              <p className="text-[#B3B3B8]/40 text-sm">New works coming soon.</p>
+              <Link href="/contact">
+                <Button className="mt-4 bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em]">
+                  Commission a Piece
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {featured.map((artwork) => (
+                <Link key={artwork.id} href={`/shop/${artwork.slug}`}>
+                  <div
+                    className="group cursor-pointer"
+                    data-testid={`card-artwork-${artwork.id}`}
+                  >
+                    <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-[#1a1225] mb-4">
+                      {(artwork.enhancedImageUrl || artwork.imageUrl) ? (
+                        <img
+                          src={artwork.enhancedImageUrl || artwork.imageUrl}
+                          alt={artwork.title}
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Palette className="w-8 h-8 text-white/10" />
+                        </div>
+                      )}
+                      {artwork.sold && (
+                        <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-[#F5F5F7]/70 text-[9px] uppercase tracking-[0.2em] px-2 py-1 rounded-sm">
+                          Sold
+                        </div>
+                      )}
+                      {artwork.forSale && !artwork.sold && (
+                        <div className="absolute top-3 right-3 bg-[#C084FC]/90 text-white text-[9px] uppercase tracking-[0.2em] px-2 py-1 rounded-sm">
+                          Available
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      <div className="absolute bottom-4 left-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <span className="text-white text-xs uppercase tracking-[0.2em] flex items-center gap-1">
+                          View Work <ArrowRight className="w-3 h-3" />
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-[#F5F5F7] text-sm font-medium tracking-wide group-hover:text-[#C084FC] transition-colors">{artwork.title}</h3>
+                      <p className="text-[#B3B3B8]/50 text-xs mt-1">{artwork.medium}{artwork.dimensions ? ` · ${artwork.dimensions}` : ""}</p>
+                      {artwork.price && artwork.forSale && !artwork.sold && (
+                        <p className="text-[#C084FC] text-sm mt-1.5 font-medium">${parseFloat(String(artwork.price)).toLocaleString()}</p>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          <div className="text-center mt-12">
+            <Link href="/shop">
+              <Button
+                variant="ghost"
+                className="text-[#B3B3B8] hover:text-white border border-white/15 hover:border-white/30 text-xs uppercase tracking-[0.2em] font-semibold px-8 py-3 h-auto"
+                data-testid="button-view-all-shop"
+              >
+                View All Works
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-function CtaSection() {
-  const { ref, inView } = useInView(0.2);
+function AboutSection() {
+  const { ref, inView } = useInView();
 
   return (
-    <section className="py-24 lg:py-32 relative overflow-hidden" data-testid="section-cta">
-      <div className="absolute inset-0 bg-background" />
-      <div
-        className="absolute inset-0 opacity-40"
-        style={{
-          background: "radial-gradient(ellipse 60% 80% at 50% 50%, rgba(93,63,211,0.18) 0%, transparent 70%)",
-        }}
-      />
-      <div
-        ref={ref}
-        className="relative max-w-3xl mx-auto px-6 lg:px-10 text-center"
-        style={{
-          opacity: inView ? 1 : 0,
-          transform: inView ? "translateY(0)" : "translateY(32px)",
-          transition: "opacity 0.9s ease-out, transform 0.9s ease-out",
-        }}
-      >
-        <span className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold">
-          Get Started Today
-        </span>
-        <h2
-          className="mt-4 text-3xl sm:text-4xl lg:text-5xl font-bold text-white uppercase tracking-tight"
-          style={{ fontFamily: "Poppins, sans-serif" }}
-        >
-          Ready to Reign Over Your Space?
-        </h2>
-        <p className="mt-6 text-[#B3B3B8] text-lg leading-relaxed">
-          Schedule your free assessment. Our team will evaluate your project, answer every question, and deliver a clear proposal — at no cost.
-        </p>
-        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Link href="/contact?utm_source=website&utm_medium=bottom_cta&utm_campaign=homepage">
+    <section className="py-24 lg:py-32 bg-[#0c0915]" data-testid="section-about">
+      <div className="max-w-7xl mx-auto px-6 lg:px-10">
+        <div ref={ref} className={`transition-all duration-700 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
+            <div>
+              <span className="text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/50 block mb-4">The Artist</span>
+              <h2 className="text-3xl sm:text-4xl font-light text-white leading-tight mb-6" style={{ fontFamily: "Georgia, serif" }}>
+                Where imagination
+                <br />
+                <span className="italic">meets material.</span>
+              </h2>
+              <p className="text-[#B3B3B8]/70 text-sm leading-relaxed mb-4">
+                Working across abstract canvas, portraiture, and sculptural installation, each piece is an exploration of the boundary between emotion and form — between what is felt and what can be made tangible.
+              </p>
+              <p className="text-[#B3B3B8]/60 text-sm leading-relaxed mb-8">
+                Copper, reclaimed materials, and layered paint serve as the vocabulary of a practice rooted in honesty and craft. Every work begins with a question and ends with something that exists entirely on its own terms.
+              </p>
+              <div className="flex gap-4">
+                <Link href="/about">
+                  <Button
+                    variant="ghost"
+                    className="text-[#C084FC] hover:text-white border border-[#C084FC]/30 hover:border-[#C084FC]/60 text-xs uppercase tracking-[0.18em] font-semibold px-6 py-2.5 h-auto"
+                    data-testid="button-about-learn-more"
+                  >
+                    About the Artist
+                  </Button>
+                </Link>
+                <Link href="/contact">
+                  <Button
+                    variant="ghost"
+                    className="text-[#B3B3B8]/60 hover:text-white border border-white/10 hover:border-white/25 text-xs uppercase tracking-[0.18em] font-semibold px-6 py-2.5 h-auto"
+                    data-testid="button-about-commission"
+                  >
+                    Commission
+                  </Button>
+                </Link>
+              </div>
+            </div>
+            <div className="relative">
+              <div
+                className="aspect-[4/5] rounded-sm"
+                style={{ background: "linear-gradient(135deg, rgba(192,132,252,0.1) 0%, rgba(139,92,246,0.08) 50%, rgba(216,180,254,0.05) 100%)", border: "1px solid rgba(192,132,252,0.1)" }}
+              >
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <Palette className="w-12 h-12 text-[#C084FC]/20 mx-auto mb-3" />
+                    <p className="text-[#B3B3B8]/20 text-xs uppercase tracking-[0.2em]">Artist portrait</p>
+                  </div>
+                </div>
+              </div>
+              <div className="absolute -bottom-6 -left-6 w-48 h-32 rounded-sm border border-white/5"
+                style={{ background: "rgba(192,132,252,0.05)" }} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CommissionCTASection() {
+  const { ref, inView } = useInView();
+
+  return (
+    <section className="py-24 lg:py-32 bg-[#08060e]" data-testid="section-commission-cta">
+      <div className="max-w-3xl mx-auto px-6 lg:px-10 text-center">
+        <div ref={ref} className={`transition-all duration-700 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+          <span className="text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/50 block mb-4">Commissions</span>
+          <h2 className="text-3xl sm:text-4xl font-light text-white mb-6" style={{ fontFamily: "Georgia, serif" }}>
+            A piece made for you,<br />
+            <span className="italic">and only you.</span>
+          </h2>
+          <p className="text-[#B3B3B8]/60 text-sm leading-relaxed mb-10 max-w-xl mx-auto">
+            Commission an original work — a portrait, an abstract canvas, or a custom sculpture. Each commission begins with a conversation about what you want to live with.
+          </p>
+          <Link href="/contact?utm_source=home&utm_medium=cta&utm_campaign=commission">
             <Button
-              className="bg-[#5D3FD3] hover:bg-[#4a32a8] text-white border-0 text-sm uppercase tracking-[0.15em] font-semibold px-12 py-6"
-              data-testid="button-assessment-cta"
+              className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em] font-semibold px-10 py-3.5 h-auto"
+              data-testid="button-commission-cta"
             >
-              Book Free Assessment
-            </Button>
-          </Link>
-          <Link href="/services">
-            <Button
-              variant="ghost"
-              className="text-white border border-white/20 hover:bg-white/5 text-sm uppercase tracking-[0.15em] font-semibold px-8 py-6"
-              data-testid="button-view-services-cta"
-            >
-              Explore Services
+              Start a Commission
             </Button>
           </Link>
         </div>
-        <p className="mt-5 text-xs text-[#B3B3B8]/40 tracking-wide">
-          Serving Dallas, Fort Worth, Plano, Frisco, McKinney, Arlington, and surrounding DFW communities.
-        </p>
       </div>
     </section>
   );
@@ -519,12 +366,13 @@ function CtaSection() {
 
 export default function Home() {
   return (
-    <div className="bg-background min-h-screen">
+    <div data-testid="page-home">
+      <title>Studio — Original Art | Abstract, Portraits & Sculpture</title>
       <HeroSection />
-      <ServicesSection />
-      <TrustSection />
-      <ProcessSection />
-      <CtaSection />
+      <MediumsSection />
+      <FeaturedWorksSection />
+      <AboutSection />
+      <CommissionCTASection />
     </div>
   );
 }

@@ -1,110 +1,99 @@
-# Reign Services — DFW's Premier Interior/Exterior Renovations Experts
+# Studio — Independent Artist's Website
 
 ## Overview
-Dark-themed website for Reign Services, a Dallas-Fort Worth premium renovation contractor. Services: Custom Turf Design & Install, Foundation Repair, Interior Remodeling, Outdoor Remodeling, Bespoke Outdoor Living Spaces, Turf & Pavers. All CTAs push visitors toward a free property assessment via the contact form or live chat. Admin/blog/CRM backend fully intact and rebranded.
+Dark-themed artist website for an independent contemporary artist specializing in abstract canvas art, life-like portraiture, 3D installations, and copper sculptures. Full e-commerce with Stripe, AI-guided photo capture, AI image enhancement + description generation, SEO automation, analytics tracking, and lead capture for collector inquiries. Blog/newsletter automation retained and rebranded.
 
 ## Tech Stack
 - Frontend: React + Vite + Tailwind CSS + wouter routing
 - Backend: Express.js + Node.js
 - Database: PostgreSQL with Drizzle ORM
 - Auth: Session-based with httpOnly cookies (bcrypt + 7-day sessions)
-- AI: OpenAI (gpt-5.2) via Replit AI Integrations for article generation
-- Email: Resend integration for newsletter delivery
-- Font: Poppins / Montserrat (system fallback)
+- AI: OpenAI (gpt-4o) via Replit AI Integrations — artwork analysis, description generation, photo guidance
+- Email: Resend integration for newsletter delivery and lead notifications
+- Payments: Stripe — artwork purchase checkout sessions
+- Font: Georgia (serif headings), system sans-serif for body
 
 ## Architecture
-- Dark-only theme (#0B0B0D primary bg, #5D3FD3 purple accent, #0A1F44 navy blue)
-- No sidebar layout — traditional header/footer navigation
-- CRM-style lead management in /admin
-- Contact form submits to /api/leads (backend schema unchanged: vehicle = service type, insurance = property address)
+- Dark-only theme (#08060e primary bg, #C084FC purple accent)
+- Traditional header/footer navigation — no sidebar
+- CRM-style lead management for collector inquiries in /admin
+- Contact form: `subject` field replaces old `vehicle`; statuses are art-focused
 - Session-based auth with role middleware (root/admin/editor)
-- Root user (webmaster) seeded on startup: startupalchemist@consultant.com
-- Role hierarchy: root (webmaster, protected) > admin (can manage users except root) > editor
+- Root user seeded on startup: startupalchemist@consultant.com
+- Role hierarchy: root > admin > editor
 
 ## Brand Guidelines
-- Colors: #0B0B0D bg, #141416 cards, #5D3FD3 purple primary, #0A1F44 navy blue accent, #F5F5F7 text, #B3B3B8 secondary text
-- Tone: Premium, professional, confident. No exclamation hype. Results-focused.
-- Logos: IMG_4743_1773978350169.png (header), IMG_8426_1773978350170.png (footer)
-- Hero video: attached_assets/generated_videos/turf_install_timelapse.mp4 (AI-generated: luxury Texas backyard turf install + outdoor living, golden hour, cinematic 720p 6s)
-- CTA label everywhere: "Book Free Assessment"
+- Colors: #08060e background, #141416 cards, #C084FC primary accent (purple), #F5F5F7 text, #B3B3B8 secondary
+- Tone: Minimal, artistic, premium. No exclamation points. Confident and quiet.
+- Brand name: "Studio" (artist can customize)
+- CTA: "Commission a Piece"
+- Art categories: Abstract, Portrait, 3D Installation, Sculpture, Mixed Media
 
-## Pages
-- / — Homepage (hero video, services grid, trust pillars, process steps, CTA)
-- /services — All 6 services with detailed descriptions and CTAs
-- /about — Company story, standards, service area, team values
-- /faq — Categorized FAQ with filter by category
-- /contact — Lead capture form (service type + property address fields)
-- /blog — Public blog index (shows published posts)
-- /blog/:slug — Individual blog post page (with share buttons)
-- /login — Admin login
-- /admin — Admin dashboard (Dyno, Leads, Blog, Newsletter, Users, Integrations, Webhooks)
-- /rate/:token — Customer sentiment rating page (survey emails)
+## Database Tables
+- `users` — session auth users (root/admin/editor)
+- `sessions` — auth sessions
+- `leads` — collector inquiries (subject, status: New Inquiry → Closed)
+- `artworks` — artwork catalog (title, slug, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, sold, status, category, featured, seoTitle, seoDescription, seoKeywords, viewCount, stripeProductId, stripePriceId, pageRegistryId, publishedAt)
+- `orders` — artwork purchases (artworkId, buyerName, buyerEmail, amount, status, stripeSessionId, stripePaymentIntentId, shippingAddress)
+- `analyticsEvents` — page views, CTR, CTA clicks, purchases (page, eventType, sessionId, referrer, utmSource/Medium/Campaign, metadata)
+- `pageRegistry` — all indexed pages auto-created on publish (slug, title, pageType, seoTitle/Description/Keywords, status, linkedEntityId/Type)
+- `posts`, `topics` — blog articles (AI-generated, SEO-focused)
+- `subscribers`, `newsletters` — newsletter system
+- `settings` — key-value store for configuration
+- `webhooks`, `webhookLogs` — outgoing webhook system
+- `gallerySections`, `galleryItems` — photo gallery (admin-managed)
+- `services` — blog topic services (controls AI blog research context)
 
-## Service Pages (6 stubs, all CTA → /contact)
-- /custom-turf-install — Custom Turf Design & Install
-- /foundation-repair — Foundation Repair
-- /interior-remodeling — Interior Remodeling
-- /outdoor-remodeling — Outdoor Remodeling
-- /outdoor-living — Bespoke Outdoor Living Spaces
-- /turf-and-pavers — Turf & Pavers
+## Key Routes (Backend)
+- GET/POST/PATCH/DELETE `/api/artworks` — artwork CRUD
+- GET `/api/artworks/:idOrSlug` — artwork by ID or slug
+- POST `/api/artworks/:id/view` — increment view count
+- POST `/api/upload` — base64 image upload to /uploads/
+- POST `/api/ai/enhance-artwork` — OpenAI artwork analysis + description/SEO/price generation
+- POST `/api/ai/capture-guidance` — real-time photo capture quality feedback
+- POST `/api/analytics/event` — track page views, CTR, CTA clicks, conversions
+- GET `/api/analytics/summary` — analytics summary (admin only)
+- GET/POST/PATCH/DELETE `/api/pages` — page registry CRUD
+- POST `/api/checkout` — Stripe checkout session creation
+- POST `/api/checkout/webhook` — Stripe webhook (marks artwork sold)
+- GET `/api/orders` — order list (admin only)
 
-## Blog Workflow (Multi-Stage AI Agent System)
-1. **Research Agent**: POST /api/ai/research → 5 topic suggestions in `topics` table
-2. **Writer Agent**: POST /api/topics/:id/generate → full article → status "queued"
-3. **Archive**: PATCH /api/topics/:id/archive
-4. **Publisher Agent**: POST /api/posts/:id/publish → SEO enrichment + backlinks + newsletter send
-5. **Read/Share Tracking**: POST /api/posts/:id/read, POST /api/posts/:id/share
-6. Social share buttons on blog post pages
+## Public Pages
+- `/` — Home (hero, mediums, featured works, about teaser, commission CTA)
+- `/gallery` — Photo gallery (admin-managed sections)
+- `/shop` — Artwork shop listing (filterable by category)
+- `/shop/:slug` — Individual artwork detail + Stripe purchase flow
+- `/about` — Artist bio and mediums
+- `/contact` — Commission/inquiry form
+- `/blog` — Blog listing
+- `/blog/:slug` — Blog post
 
-## The Dyno — Performance Dashboard
-- SVG gauge cluster on admin panel (first tab)
-- Gauges: Traffic, Conversion, Sentiment, Pipeline, CTA Rate
-- Data sourced from /api/stats dyno object
+## Admin Tabs
+- **The Dyno** — analytics dashboard (TheDyno component)
+- **Dashboard** — lead pipeline summary
+- **Shop** — artwork manager (create/edit/publish/delete + AI enhance + image upload)
+- **Orders** — Stripe purchase records
+- **Inquiries** — collector lead management
+- **Blog** — AI blog content generation
+- **Newsletter** — email newsletter
+- **Pages** — page registry (auto-populated on publish)
+- **Users** — user management (admin+)
+- **Integrations** — webhook + integration management
+- **SEO** — SEO settings and blog services
+- **Blog Services** — controls AI blog topic research context
+- **Gallery** — photo gallery section/item management
 
-## Database Schema
-- `leads`: id, name, phone, email, vehicle (service type), insurance (property address), message, status, utmSource, utmMedium, utmCampaign, createdAt + CRM fields
-- `users`: id, name, email, passwordHash, role, createdAt
-- `sessions`: id, userId, token, expiresAt
-- `topics`: id, title, overview, targetKeywords[], searchIntent, estimatedSearchVolume, competitionLevel, leadPotential, reasoning, status, aiJobId, postId, createdAt
-- `posts`: id, title, slug, content, excerpt, tags[], seoTitle, seoDescription, seoKeywords[], featuredImage, status, authorId, topicId, readCount, shareCount, publishedAt, createdAt, updatedAt
-- `subscribers`: id, name, email, status, unsubscribeToken, createdAt
-- `newsletters`: id, subject, htmlContent, status, sentAt, recipientCount, createdAt
-- `ai_jobs`: id, type, input, output, status, createdAt
-- `backlinks`: id, postId, platform, url, utmSource, utmMedium, utmCampaign, shortCode, clicks, createdAt
-- `backlink_clicks`: id, backlinkId, referrer, userAgent, clickedAt
-- `webhooks`: id, name, url, events[], secret, active, createdAt
-- `webhook_logs`: id, webhookId, event, payload, statusCode, response, success, duration, createdAt
-- `ratings`: id, leadId, score (1-5), channel, token, createdAt
-- `settings`: id, key, value, updatedAt
+## Analytics Tracking
+Analytics events tracked client-side on:
+- Shop page view: `page_view` on `/shop`
+- Artwork view: `artwork_view` on `/shop/:slug`  
+- CTA clicks: `cta_click` (buy intent, share, checkout)
+- Contact form: `contact_submit` on `/contact`
+- Purchases: `purchase` on successful Stripe redirect
 
-## API Endpoints
-### Public
-- POST /api/leads — Create new lead
-- POST /api/subscribers — Subscribe to newsletter
-- GET /api/posts — List posts (optional ?status=published)
-- GET /api/posts/:idOrSlug — Get single post
-- POST /api/posts/:id/read — Increment read count
-- POST /api/posts/:id/share — Increment share count
-- GET /api/unsubscribe/:token — Unsubscribe
-- GET /r/:shortCode — Backlink click tracking redirect
-- GET /api/rate/:token — Submit rating
-
-### Auth
-- POST /api/auth/login
-- POST /api/auth/logout
-- GET /api/auth/me
-
-### Admin (auth required)
-- GET/PATCH /api/leads, /api/leads/:id
-- POST/PATCH/DELETE /api/posts, /api/posts/:id
-- GET/POST /api/topics, PATCH /api/topics/:id/archive
-- POST /api/ai/research, POST /api/topics/:id/generate
-- POST /api/posts/:id/publish
-- GET/DELETE /api/subscribers
-- POST/GET /api/newsletters, POST /api/newsletters/:id/send
-- GET/POST/DELETE /api/users
-- GET /api/stats
-- GET/POST/PATCH/DELETE /api/webhooks
-- GET /api/ratings, /api/ratings/summary
-- GET/PUT /api/settings/:key
-- GET /api/analytics/funnel
+## File Structure Notes
+- Images uploaded to `client/public/uploads/` (served as static assets)
+- Old contractor pages still exist but are not routed: services.tsx, custom-turf-install.tsx, etc. (safe to delete if desired)
+- TheDyno component: `client/src/components/the-dyno.tsx`
+- Header: `client/src/components/header.tsx`
+- Footer: `client/src/components/footer.tsx`

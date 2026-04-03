@@ -7,9 +7,12 @@ import type { GallerySection, GalleryItem } from "@shared/schema";
 type GallerySectionWithItems = GallerySection & { items: GalleryItem[] };
 
 const badgeColors: Record<string, string> = {
-  "Before":      "bg-[#0A1F44]/90 text-white border border-white/20",
+  "Process":     "bg-amber-500/90 text-black border border-amber-400/40",
+  "Complete":    "bg-[#C084FC]/90 text-white border border-[#C084FC]/40",
+  "Commission":  "bg-blue-500/90 text-white border border-blue-400/40",
+  "Before":      "bg-white/10 text-white border border-white/20",
+  "After":       "bg-[#C084FC]/90 text-white border border-[#C084FC]/40",
   "In Progress": "bg-amber-500/90 text-black border border-amber-400/40",
-  "After":       "bg-[#5D3FD3]/90 text-white border border-[#5D3FD3]/40",
 };
 
 function MasonryGrid({ images }: { images: GalleryItem[] }) {
@@ -33,16 +36,11 @@ function MasonryGrid({ images }: { images: GalleryItem[] }) {
 function SectionHeader({ label, title, callout }: { label: string; title: string; callout?: string }) {
   return (
     <div className="mb-8">
-      <span className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold">{label}</span>
-      <h2
-        className="mt-2 text-2xl sm:text-3xl font-bold text-white uppercase tracking-tight"
-        style={{ fontFamily: "Poppins, sans-serif" }}
-      >
+      <span className="text-[10px] uppercase tracking-[0.35em] text-[#C084FC]/60 font-medium">{label}</span>
+      <h2 className="mt-2 text-2xl sm:text-3xl font-light text-white" style={{ fontFamily: "Georgia, serif" }}>
         {title}
       </h2>
-      {callout && (
-        <p className="mt-2 text-sm text-[#B3B3B8]/70">{callout}</p>
-      )}
+      {callout && <p className="mt-2 text-sm text-[#B3B3B8]/60">{callout}</p>}
     </div>
   );
 }
@@ -52,16 +50,10 @@ function SpotlightSection({ section }: { section: GallerySectionWithItems }) {
     <section className="mb-20 lg:mb-28" data-testid="section-spotlight">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
-          <span className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold">Project Spotlight</span>
-          <h2
-            className="mt-2 text-2xl sm:text-3xl font-bold text-white uppercase tracking-tight"
-            style={{ fontFamily: "Poppins, sans-serif" }}
-          >
-            Residential Turf + Outdoor Living Transformation
+          <span className="text-[10px] uppercase tracking-[0.35em] text-[#C084FC]/60 font-medium">{section.name}</span>
+          <h2 className="mt-2 text-2xl sm:text-3xl font-light text-white" style={{ fontFamily: "Georgia, serif" }}>
+            {section.name}
           </h2>
-          <p className="mt-2 text-sm text-[#B3B3B8]/70">
-            A complete backyard transformation — from bare dirt to a finished outdoor living space.
-          </p>
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -89,46 +81,10 @@ function SpotlightSection({ section }: { section: GallerySectionWithItems }) {
 }
 
 function GenericSection({ section, index }: { section: GallerySectionWithItems; index: number }) {
-  const isCustomPatterns = section.name === "Custom Patterns";
   const testId = `section-${section.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-
-  if (isCustomPatterns) {
-    return (
-      <section className="mb-20 lg:mb-28" data-testid={testId}>
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div>
-            <span className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold">Custom Patterns</span>
-            <h2
-              className="mt-2 text-2xl sm:text-3xl font-bold text-white uppercase tracking-tight"
-              style={{ fontFamily: "Poppins, sans-serif" }}
-            >
-              Made-to-Order Turf Design
-            </h2>
-            <p className="mt-2 text-sm text-[#B3B3B8]/70">
-              Geometric, floral, branded logos, and more — every pattern is quoted individually.{" "}
-              <Link href="/contact?utm_source=gallery&utm_medium=patterns_inline_cta">
-                <span className="text-[#5D3FD3] hover:text-white transition-colors cursor-pointer">Request a free estimate.</span>
-              </Link>
-            </p>
-          </div>
-        </div>
-        <MasonryGrid images={section.items} />
-      </section>
-    );
-  }
-
-  const sectionLabels: Record<string, { label: string; title: string }> = {
-    "Turf & Pavers":       { label: "Turf & Pavers",       title: "Pool Surrounds & Hardscaping" },
-    "Putting Greens":      { label: "Putting Greens",      title: "Backyard & Property Greens" },
-    "Sports & Commercial": { label: "Sports & Commercial", title: "Sports Fields & Large-Scale Installs" },
-    "Outdoor Living":      { label: "Outdoor Living",      title: "Covered Spaces & Pergolas" },
-    "Residential":         { label: "Residential",         title: "Front Yards, Playgrounds & More" },
-  };
-  const meta = sectionLabels[section.name] ?? { label: section.name, title: section.name };
-
   return (
     <section className="mb-20 lg:mb-28" data-testid={testId}>
-      <SectionHeader label={meta.label} title={meta.title} />
+      <SectionHeader label={section.name} title={section.name} />
       <MasonryGrid images={section.items} />
     </section>
   );
@@ -146,22 +102,22 @@ export default function Gallery() {
       <div className="max-w-7xl mx-auto px-6 lg:px-10 pb-24 lg:pb-40">
 
         <div className="mb-16 lg:mb-20">
-          <span className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold">Our Work</span>
+          <span className="text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/50 block mb-3">The Gallery</span>
           <h1
-            className="mt-3 text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white uppercase tracking-tight leading-[1.05]"
-            style={{ fontFamily: "Poppins, sans-serif" }}
+            className="text-4xl sm:text-5xl lg:text-6xl font-light text-white leading-tight"
+            style={{ fontFamily: "Georgia, serif" }}
             data-testid="text-gallery-headline"
           >
-            Real Projects.<br />Real Results.
+            A record of the work.
           </h1>
-          <p className="mt-5 text-[#B3B3B8] text-lg max-w-2xl leading-relaxed">
-            A look at what we build across Dallas-Fort Worth — from backyard transformations to commercial installations.
+          <p className="mt-5 text-[#B3B3B8]/60 text-base max-w-xl leading-relaxed font-light">
+            Process photographs, finished works, and installation documentation from the studio.
           </p>
         </div>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 text-[#5D3FD3] animate-spin" />
+            <Loader2 className="w-6 h-6 text-[#C084FC] animate-spin" />
           </div>
         ) : (
           <>
@@ -176,43 +132,36 @@ export default function Gallery() {
         )}
 
         <div
-          className="mt-4 p-10 rounded-2xl text-center relative overflow-hidden"
+          className="mt-4 p-10 rounded-sm text-center relative overflow-hidden"
           style={{
-            background: "rgba(93,63,211,0.08)",
-            border: "1px solid rgba(93,63,211,0.20)",
+            background: "rgba(192,132,252,0.05)",
+            border: "1px solid rgba(192,132,252,0.15)",
           }}
           data-testid="section-gallery-cta"
         >
-          <div
-            className="absolute inset-0 opacity-30 pointer-events-none"
-            style={{ background: "radial-gradient(ellipse 60% 80% at 50% 50%, rgba(93,63,211,0.25) 0%, transparent 70%)" }}
-          />
           <div className="relative">
-            <span className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold">Get Started</span>
-            <h2
-              className="mt-3 text-2xl sm:text-3xl font-bold text-white uppercase tracking-tight"
-              style={{ fontFamily: "Poppins, sans-serif" }}
-            >
-              Ready to Start Your Project?
+            <span className="text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/50 block mb-3">Commission</span>
+            <h2 className="text-2xl sm:text-3xl font-light text-white mb-4" style={{ fontFamily: "Georgia, serif" }}>
+              Commission an original piece.
             </h2>
-            <p className="mt-4 text-[#B3B3B8] text-base leading-relaxed max-w-xl mx-auto">
-              Every project starts with a free on-site assessment. Our team evaluates your space, answers your questions, and delivers a clear proposal — no obligation.
+            <p className="text-[#B3B3B8]/50 text-sm leading-relaxed max-w-lg mx-auto mb-8">
+              Each commission begins with a conversation. Portrait, abstract canvas, copper sculpture — all mediums available for bespoke work.
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/contact?utm_source=gallery&utm_medium=bottom_cta">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link href="/contact?utm_source=gallery&utm_medium=bottom_cta&utm_campaign=commission">
                 <Button
-                  className="bg-[#5D3FD3] hover:bg-[#4a32a8] text-white border-0 text-sm uppercase tracking-[0.15em] font-semibold px-10 py-5"
+                  className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold px-10 py-3 h-auto"
                   data-testid="button-gallery-cta"
                 >
-                  Book Free Assessment
+                  Start a Commission
                 </Button>
               </Link>
-              <Link href="/services">
+              <Link href="/shop">
                 <Button
                   variant="ghost"
-                  className="text-[#B3B3B8] hover:text-white border border-white/10 text-sm uppercase tracking-[0.12em] font-semibold px-8 py-5"
+                  className="text-[#B3B3B8] hover:text-white border border-white/10 hover:border-white/25 text-xs uppercase tracking-[0.15em] font-semibold px-8 py-3 h-auto"
                 >
-                  Explore Services <ChevronRight className="w-3 h-3 ml-1" />
+                  Shop Available Works <ChevronRight className="w-3 h-3 ml-1" />
                 </Button>
               </Link>
             </div>
