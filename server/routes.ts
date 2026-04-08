@@ -298,13 +298,26 @@ export async function registerRoutes(
       const page = Math.max(1, parseInt(String(req.query.page || "1")));
       const limit = 25;
       const offset = (page - 1) * limit;
-      const [logs, total] = await Promise.all([
-        storage.getActivityLogs(limit, offset),
-        storage.getActivityLogCount(),
+      const actorIdFilter = req.query.actorId ? parseInt(String(req.query.actorId)) : undefined;
+      const actionTypeFilter = req.query.actionType ? String(req.query.actionType) : undefined;
+
+      const [allLogs, usersAll] = await Promise.all([
+        storage.getActivityLogs(1000, 0),
+        storage.getUsers(),
       ]);
-      const usersAll = await storage.getUsers();
-      const userMap = new Map(usersAll.map(u => [u.id, { name: u.name, email: u.email, role: u.role }]));
-      const enriched = logs.map(l => ({ ...l, actor: userMap.get(l.actorId) || null }));
+
+      const userMap = new Map(usersAll.map(u => [u.id, { id: u.id, name: u.name, email: u.email, role: u.role }]));
+      let filtered = allLogs;
+      if (actorIdFilter && !isNaN(actorIdFilter)) {
+        filtered = filtered.filter(l => l.actorId === actorIdFilter);
+      }
+      if (actionTypeFilter) {
+        filtered = filtered.filter(l => l.actionType === actionTypeFilter);
+      }
+
+      const total = filtered.length;
+      const paginated = filtered.slice(offset, offset + limit);
+      const enriched = paginated.map(l => ({ ...l, actor: userMap.get(l.actorId) || null }));
       res.json({ logs: enriched, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
     } catch {
       res.status(500).json({ message: "Failed to fetch activity log" });
@@ -313,22 +326,34 @@ export async function registerRoutes(
 
   // ─── Session Management Routes ────────────────────────────────────
 
-  app.get("/api/sessions", authMiddleware, requireRole("root"), async (_req, res) => {
+  app.get("/api/sessions", authMiddleware, async (req, res) => {
     try {
-      const allSessions = await storage.getAllActiveSessions();
-      const usersAll = await storage.getUsers();
-      const userMap = new Map(usersAll.map(u => [u.id, { name: u.name, email: u.email, role: u.role }]));
       const now = new Date();
-      const active = allSessions.filter(s => s.expiresAt > now).map(s => ({
-        id: s.id,
-        userId: s.userId,
-        user: userMap.get(s.userId) || null,
-        userAgent: s.userAgent,
-        ipAddress: s.ipAddress,
-        createdAt: s.createdAt,
-        expiresAt: s.expiresAt,
-      }));
-      res.json(active);
+      const actorRole = req.user!.role;
+      const actorId = req.user!.id;
+
+      let rawSessions;
+      if (actorRole === "root") {
+        rawSessions = await storage.getAllActiveSessions();
+      } else {
+        rawSessions = await storage.getSessionsByUserId(actorId);
+      }
+
+      const active = rawSessions.filter(s => s.expiresAt > now);
+
+      if (actorRole === "root") {
+        const usersAll = await storage.getUsers();
+        const userMap = new Map(usersAll.map(u => [u.id, { name: u.name, email: u.email, role: u.role }]));
+        res.json(active.map(s => ({
+          id: s.id, userId: s.userId, user: userMap.get(s.userId) || null,
+          userAgent: s.userAgent, ipAddress: s.ipAddress, createdAt: s.createdAt, expiresAt: s.expiresAt,
+        })));
+      } else {
+        res.json(active.map(s => ({
+          id: s.id, userId: s.userId, user: null,
+          userAgent: s.userAgent, ipAddress: s.ipAddress, createdAt: s.createdAt, expiresAt: s.expiresAt,
+        })));
+      }
     } catch {
       res.status(500).json({ message: "Failed to fetch sessions" });
     }
@@ -987,6 +1012,7 @@ Respond in JSON format:
 
       const updated = await storage.updatePost(id, { status: "published", publishedAt: new Date() });
       res.json(updated);
+      await logAdminAction(req, "post_published", `Published blog post "${post.title}"`, { entityType: "post", entityId: String(id) });
       fireWebhooks("post.published", { id: post.id, title: post.title, slug: post.slug, excerpt: post.excerpt, tags: post.tags, publishedAt: new Date().toISOString() });
 
       // Auto-register published blog post in pageRegistry for sitemap inclusion
@@ -1737,6 +1763,7 @@ Respond in JSON format:
         return res.status(400).json({ message: "Value must be a string" });
       }
       await storage.setSetting(req.params.key, value);
+      await logAdminAction(req, "setting_changed", `Setting "${req.params.key}" updated`, { entityType: "setting", entityId: req.params.key });
       res.json({ key: req.params.key, value });
     } catch {
       res.status(500).json({ message: "Failed to update setting" });
@@ -2313,6 +2340,9 @@ Generate only the requested fields. Respond in this exact JSON format:
       }
       const artwork = await storage.updateArtwork(id, updates);
       if (!artwork) return res.status(404).json({ message: "Artwork not found" });
+      if (updates.status) {
+        await logAdminAction(req, "artwork_status_changed", `Artwork "${artwork.title}" status → ${updates.status}`, { entityType: "artwork", entityId: String(id) });
+      }
       if (updates.status === "published") {
         fireWebhooks("artwork.published", { id: artwork.id, title: artwork.title, slug: artwork.slug, category: artwork.category });
         // Notify waitlist subscribers only on first publish (status transition)
@@ -2664,6 +2694,9 @@ Generate only the requested fields. Respond in this exact JSON format:
       if (trackingNumber !== undefined) updates.trackingNumber = trackingNumber;
       const order = await storage.updatePrintOrder(id, updates);
       if (!order) return res.status(404).json({ message: "Print order not found" });
+      if (updates.status) {
+        await logAdminAction(req, "order_status_changed", `Print order #${id} status → ${updates.status}`, { entityType: "print_order", entityId: String(id) });
+      }
       res.json(order);
     } catch {
       res.status(500).json({ message: "Failed to update print order" });

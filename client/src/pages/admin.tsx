@@ -1788,21 +1788,27 @@ function UsersTab({
   currentUserRole: string;
 }) {
   const isRoot = currentUserRole === "root";
+  const isAdminOrRoot = currentUserRole === "root" || currentUserRole === "admin";
   const [logPage, setLogPage] = useState(1);
+  const [logActorFilter, setLogActorFilter] = useState<string>("");
+  const [logActionFilter, setLogActionFilter] = useState<string>("");
 
   const { data: users = [], isLoading } = useQuery<{ id: number; name: string; email: string; role: string; lastLoginAt: string | null; createdAt: string }[]>({
     queryKey: ["/api/users"],
   });
 
   const { data: activityData, isLoading: logLoading } = useQuery<{
-    logs: { id: number; actorId: number; actionType: string; entityType: string | null; entityId: string | null; summary: string; createdAt: string; actor: { name: string; email: string; role: string } | null }[];
+    logs: { id: number; actorId: number; actionType: string; entityType: string | null; entityId: string | null; summary: string; createdAt: string; actor: { id: number; name: string; email: string; role: string } | null }[];
     total: number;
     page: number;
     pages: number;
   }>({
-    queryKey: ["/api/activity-log", logPage],
+    queryKey: ["/api/activity-log", logPage, logActorFilter, logActionFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/activity-log?page=${logPage}`, { credentials: "include" });
+      const params = new URLSearchParams({ page: String(logPage) });
+      if (logActorFilter) params.set("actorId", logActorFilter);
+      if (logActionFilter) params.set("actionType", logActionFilter);
+      const res = await fetch(`/api/activity-log?${params.toString()}`, { credentials: "include" });
       if (!res.ok) return { logs: [], total: 0, page: 1, pages: 1 };
       return res.json();
     },
@@ -1814,12 +1820,10 @@ function UsersTab({
   }[]>({
     queryKey: ["/api/sessions"],
     queryFn: async () => {
-      if (!isRoot) return [];
       const res = await fetch("/api/sessions", { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: isRoot,
   });
 
   const createUser = useMutation({
@@ -1979,50 +1983,89 @@ function UsersTab({
         </div>
       </div>
 
-      {/* ── Active Sessions (root only) ── */}
-      {isRoot && (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <Monitor className="w-4 h-4 text-[#B3B3B8]/50" />
-            <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 font-medium">Active Sessions</p>
-          </div>
-          {sessionsLoading ? (
-            <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 text-[#5D3FD3] animate-spin" /></div>
-          ) : activeSessions.length === 0 ? (
-            <p className="text-sm text-[#B3B3B8]/40 py-4" data-testid="text-no-sessions">No active sessions.</p>
-          ) : (
-            <div className="space-y-2" data-testid="panel-active-sessions">
-              {activeSessions.map((s) => (
-                <div key={s.id} className="p-4 rounded-md bg-[#141416] border border-white/5 flex flex-wrap items-start justify-between gap-3" data-testid={`card-session-${s.id}`}>
-                  <div className="min-w-0">
-                    <p className="text-[#F5F5F7] text-sm font-medium">{s.user?.name || "Unknown"} <span className="text-[#B3B3B8]/40 font-normal">({s.user?.role})</span></p>
-                    <p className="text-[#B3B3B8]/50 text-xs truncate max-w-xs" data-testid={`text-session-ua-${s.id}`}>{s.userAgent ? s.userAgent.substring(0, 80) : "Unknown browser"}</p>
-                    {s.ipAddress && <p className="text-[#B3B3B8]/30 text-[10px]">IP: {s.ipAddress}</p>}
-                    <p className="text-[#B3B3B8]/30 text-[10px]">Created: {new Date(s.createdAt).toLocaleString()} · Expires: {new Date(s.expiresAt).toLocaleDateString()}</p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => revokeSession.mutate(s.id)}
-                    disabled={revokeSession.isPending}
-                    className="shrink-0"
-                    data-testid={`button-revoke-session-${s.id}`}
-                  >
-                    <ShieldX className="w-4 h-4 text-red-400" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* ── Active Sessions ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <Monitor className="w-4 h-4 text-[#B3B3B8]/50" />
+          <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 font-medium">{isRoot ? "All Active Sessions" : "My Active Sessions"}</p>
         </div>
-      )}
+        {sessionsLoading ? (
+          <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 text-[#5D3FD3] animate-spin" /></div>
+        ) : activeSessions.length === 0 ? (
+          <p className="text-sm text-[#B3B3B8]/40 py-4" data-testid="text-no-sessions">No active sessions.</p>
+        ) : (
+          <div className="space-y-2" data-testid="panel-active-sessions">
+            {activeSessions.map((s) => (
+              <div key={s.id} className="p-4 rounded-md bg-[#141416] border border-white/5 flex flex-wrap items-start justify-between gap-3" data-testid={`card-session-${s.id}`}>
+                <div className="min-w-0">
+                  {isRoot && s.user && (
+                    <p className="text-[#F5F5F7] text-sm font-medium">{s.user.name} <span className="text-[#B3B3B8]/40 font-normal">({s.user.role})</span></p>
+                  )}
+                  <p className="text-[#B3B3B8]/50 text-xs truncate max-w-xs" data-testid={`text-session-ua-${s.id}`}>{s.userAgent ? s.userAgent.substring(0, 80) : "Unknown browser"}</p>
+                  {isRoot && s.ipAddress && <p className="text-[#B3B3B8]/30 text-[10px]">IP: {s.ipAddress}</p>}
+                  <p className="text-[#B3B3B8]/30 text-[10px]">Created: {new Date(s.createdAt).toLocaleString()} · Expires: {new Date(s.expiresAt).toLocaleDateString()}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => revokeSession.mutate(s.id)}
+                  disabled={revokeSession.isPending}
+                  className="shrink-0"
+                  data-testid={`button-revoke-session-${s.id}`}
+                >
+                  <ShieldX className="w-4 h-4 text-red-400" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ── Activity Log ── */}
       <div>
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <Activity className="w-4 h-4 text-[#B3B3B8]/50" />
           <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 font-medium">Activity Log</p>
           {activityData && <span className="text-[10px] text-[#B3B3B8]/30 ml-auto">{activityData.total} events</span>}
+        </div>
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          <select
+            value={logActorFilter}
+            onChange={e => { setLogActorFilter(e.target.value); setLogPage(1); }}
+            className="text-[11px] bg-[#141416] border border-white/10 text-[#B3B3B8] rounded px-2 py-1 focus:outline-none focus:border-[#C084FC]/50"
+            data-testid="select-log-actor-filter"
+          >
+            <option value="">All users</option>
+            {users.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+          </select>
+          <select
+            value={logActionFilter}
+            onChange={e => { setLogActionFilter(e.target.value); setLogPage(1); }}
+            className="text-[11px] bg-[#141416] border border-white/10 text-[#B3B3B8] rounded px-2 py-1 focus:outline-none focus:border-[#C084FC]/50"
+            data-testid="select-log-action-filter"
+          >
+            <option value="">All actions</option>
+            <option value="user_created">user created</option>
+            <option value="user_updated">user updated</option>
+            <option value="user_deleted">user deleted</option>
+            <option value="session_revoked">session revoked</option>
+            <option value="commission_status_changed">commission status</option>
+            <option value="commission_final_payment_sent">commission final payment</option>
+            <option value="artwork_status_changed">artwork status</option>
+            <option value="order_status_changed">order status</option>
+            <option value="post_published">post published</option>
+            <option value="setting_changed">setting changed</option>
+          </select>
+          {(logActorFilter || logActionFilter) && (
+            <button
+              onClick={() => { setLogActorFilter(""); setLogActionFilter(""); setLogPage(1); }}
+              className="text-[11px] text-[#C084FC] hover:opacity-70 transition-opacity"
+              data-testid="button-clear-log-filters"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
         {logLoading ? (
           <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 text-[#5D3FD3] animate-spin" /></div>
