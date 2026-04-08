@@ -3067,15 +3067,29 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         }
 
       }
-      // Handle commission final payment via payment link (checkout.session.completed with commissionId metadata)
-      if (event.type === "checkout.session.completed" && event.data.object.metadata?.commissionId) {
+      // Handle commission final payment via payment link
+      // Primary lookup: session.payment_link → finalPaymentLinkId (Payment Links don't auto-propagate
+      // their metadata to the checkout session, but session.payment_link always contains the link ID)
+      // Fallback: session.metadata.commissionId (set via payment_intent_data.metadata on the link)
+      if (event.type === "checkout.session.completed") {
         const session = event.data.object;
-        const commissionId = parseInt(session.metadata.commissionId);
-        if (!isNaN(commissionId)) {
-          try {
-            const commission = await storage.getCommissionById(commissionId);
-            if (commission && commission.status === "final_sent") {
-              await storage.updateCommission(commissionId, {
+        // Only process if this originated from a Payment Link (final payment) or has commissionId metadata
+        const isFromPaymentLink = session.payment_link && typeof session.payment_link === "string";
+        const hasCommissionMeta = !!session.metadata?.commissionId;
+        if (isFromPaymentLink || hasCommissionMeta) {
+          let commission: Awaited<ReturnType<typeof storage.getCommissionById>> | undefined;
+          if (isFromPaymentLink) {
+            commission = await storage.getCommissionByFinalPaymentLinkId(session.payment_link as string);
+          }
+          if (!commission && hasCommissionMeta) {
+            const commissionId = parseInt(session.metadata!.commissionId);
+            if (!isNaN(commissionId)) {
+              commission = await storage.getCommissionById(commissionId);
+            }
+          }
+          if (commission && commission.status === "final_sent") {
+            try {
+              await storage.updateCommission(commission.id, {
                 status: "complete",
                 finalPaymentPaidAt: new Date(),
                 completedAt: new Date(),
@@ -3109,10 +3123,10 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
                 const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
                 console.error("Commission complete email error:", msg);
               }
+            } catch (commErr: unknown) {
+              const msg = commErr instanceof Error ? commErr.message : String(commErr);
+              console.error("Commission final payment webhook error:", msg);
             }
-          } catch (commErr: unknown) {
-            const msg = commErr instanceof Error ? commErr.message : String(commErr);
-            console.error("Commission final payment webhook error:", msg);
           }
         }
         return res.json({ received: true });
@@ -3513,9 +3527,11 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
       const paymentLink = await stripe.paymentLinks.create({
         line_items: [{ price: price.id, quantity: 1 }],
-        metadata: {
-          commissionId: String(commission.id),
-          commissionType: "final",
+        metadata: { commissionId: String(commission.id), commissionType: "final" },
+        // payment_intent_data.metadata propagates to the PaymentIntent and appears in
+        // session.metadata for checkout sessions created via this Payment Link
+        payment_intent_data: {
+          metadata: { commissionId: String(commission.id), commissionType: "final" },
         },
         after_completion: {
           type: "redirect",

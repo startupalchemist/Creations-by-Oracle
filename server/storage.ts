@@ -200,6 +200,7 @@ export interface IStorage {
   getCommissionById(id: number): Promise<Commission | undefined>;
   getCommissionBySessionId(sessionId: string): Promise<Commission | undefined>;
   getCommissionByPaymentIntentId(paymentIntentId: string): Promise<Commission | undefined>;
+  getCommissionByFinalPaymentLinkId(paymentLinkId: string): Promise<Commission | undefined>;
   updateCommission(id: number, data: Partial<Commission>): Promise<Commission | undefined>;
 
   // ─── Waitlist ────────────────────────────────────────────────────
@@ -810,6 +811,11 @@ export class DatabaseStorage implements IStorage {
 
   async getCommissionByPaymentIntentId(paymentIntentId: string): Promise<Commission | undefined> {
     const [result] = await db.select().from(commissions).where(eq(commissions.stripePaymentIntentId, paymentIntentId));
+    return result;
+  }
+
+  async getCommissionByFinalPaymentLinkId(paymentLinkId: string): Promise<Commission | undefined> {
+    const [result] = await db.select().from(commissions).where(eq(commissions.finalPaymentLinkId, paymentLinkId));
     return result;
   }
 
