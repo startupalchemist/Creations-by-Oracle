@@ -258,6 +258,11 @@ export async function registerRoutes(
               phone: lead.phone || undefined,
               subject: lead.subject || undefined,
               message: lead.message || undefined,
+              shopUrl: process.env.REPLIT_DEV_DOMAIN
+                ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+                : process.env.REPLIT_DEPLOYMENT_URL
+                ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+                : "http://localhost:5000",
             }),
           });
         }
@@ -2689,7 +2694,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
                 from: fromEmail,
                 to: artistEmail,
                 subject: `Sale — ${artworkTitle}`,
-                html: buildSaleNotificationEmail({ buyerName, buyerEmail, artworkTitle, artworkImage, amount, shippingAddress: shippingAddr }),
+                html: buildSaleNotificationEmail({ buyerName, buyerEmail, artworkTitle, artworkImage, amount, shippingAddress: shippingAddr, shopUrl: `${baseUrl}/shop` }),
               });
             }
           } catch (emailErr: unknown) {
@@ -3066,6 +3071,12 @@ function buildArtistEmail({ commission, totalPrice, depositAmount }: { commissio
   `;
 }
 
+// ─── Email Helpers ─────────────────────────────────────────────────────────────
+
+function escapeHtmlEmail(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 // ─── Order Receipt Email Builders ─────────────────────────────────────────────
 
 function buildOrderReceiptEmail({ buyerName, artworkTitle, artworkImage, amount, shopUrl }: { buyerName: string; artworkTitle: string; artworkImage: string; amount: string; shopUrl: string }) {
@@ -3089,40 +3100,46 @@ function buildOrderReceiptEmail({ buyerName, artworkTitle, artworkImage, amount,
   `;
 }
 
-function buildSaleNotificationEmail({ buyerName, buyerEmail, artworkTitle, artworkImage, amount, shippingAddress }: { buyerName: string; buyerEmail: string; artworkTitle: string; artworkImage: string; amount: string; shippingAddress?: string }) {
+function buildSaleNotificationEmail({ buyerName, buyerEmail, artworkTitle, artworkImage, amount, shippingAddress, shopUrl }: { buyerName: string; buyerEmail: string; artworkTitle: string; artworkImage: string; amount: string; shippingAddress?: string; shopUrl: string }) {
   const amountFormatted = `$${parseFloat(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return `
     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
-      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Sale Notification</p>
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
       <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 24px 0; font-family: Georgia, serif;">A work has been sold</h2>
-      ${artworkImage ? `<div style="text-align: center; margin-bottom: 24px;"><img src="${artworkImage}" alt="${artworkTitle}" style="max-width: 240px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);" /></div>` : ""}
+      ${artworkImage ? `<div style="text-align: center; margin-bottom: 24px;"><img src="${artworkImage}" alt="${escapeHtmlEmail(artworkTitle)}" style="max-width: 240px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);" /></div>` : ""}
       <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
         <table style="width: 100%; border-collapse: collapse;">
-          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Artwork</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right; font-style: italic;">${artworkTitle}</td></tr>
-          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Buyer</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${buyerName}</td></tr>
-          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Email</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${buyerEmail}</td></tr>
-          ${shippingAddress ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Ship to</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${shippingAddress}</td></tr>` : ""}
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Artwork</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right; font-style: italic;">${escapeHtmlEmail(artworkTitle)}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Buyer</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${escapeHtmlEmail(buyerName)}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Email</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${escapeHtmlEmail(buyerEmail)}</td></tr>
+          ${shippingAddress ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Ship to</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${escapeHtmlEmail(shippingAddress)}</td></tr>` : ""}
           <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Amount</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">${amountFormatted}</td></tr>
         </table>
       </div>
+      <a href="${shopUrl}" style="color: #C084FC; font-size: 12px; text-decoration: none;">View shop →</a>
     </div>
   `;
 }
 
-function buildInquiryEmail({ name, email, phone, subject, message }: { name: string; email: string; phone?: string; subject?: string; message?: string }) {
+function buildInquiryEmail({ name, email, phone, subject, message, shopUrl }: { name: string; email: string; phone?: string; subject?: string; message?: string; shopUrl?: string }) {
+  const safeName = escapeHtmlEmail(name);
+  const safeEmail = escapeHtmlEmail(email);
+  const safePhone = phone ? escapeHtmlEmail(phone) : "";
+  const safeSubject = subject ? escapeHtmlEmail(subject) : "General Inquiry";
+  const safeMessage = message ? escapeHtmlEmail(message).replace(/\n/g, "<br>") : "";
   return `
     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
       <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
-      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 24px 0; font-family: Georgia, serif;">${subject || "General Inquiry"}</h2>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 24px 0; font-family: Georgia, serif;">${safeSubject}</h2>
       <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
         <table style="width: 100%; border-collapse: collapse;">
-          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Name</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${name}</td></tr>
-          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Email</td><td style="font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;"><a href="mailto:${email}" style="color: #C084FC;">${email}</a></td></tr>
-          ${phone ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Phone</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${phone}</td></tr>` : ""}
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Name</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${safeName}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Email</td><td style="font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;"><a href="mailto:${safeEmail}" style="color: #C084FC;">${safeEmail}</a></td></tr>
+          ${safePhone ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Phone</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${safePhone}</td></tr>` : ""}
         </table>
       </div>
-      ${message ? `<div style="background: rgba(255,255,255,0.02); border-left: 2px solid #C084FC; padding: 16px; border-radius: 0 4px 4px 0; margin-bottom: 24px;"><p style="color: #B3B3B8; font-size: 13px; line-height: 1.7; margin: 0;">${message.replace(/\n/g, "<br>")}</p></div>` : ""}
-      <p style="color: #B3B3B8; font-size: 12px;">Reply directly to this email to reach ${name}. <a href="https://creationsByOracle.com" style="color: #C084FC;">Creations by Oracle</a></p>
+      ${safeMessage ? `<div style="background: rgba(255,255,255,0.02); border-left: 2px solid #C084FC; padding: 16px; border-radius: 0 4px 4px 0; margin-bottom: 24px;"><p style="color: #B3B3B8; font-size: 13px; line-height: 1.7; margin: 0;">${safeMessage}</p></div>` : ""}
+      <p style="color: #B3B3B8; font-size: 12px;">Reply directly to this email to reach ${safeName}.${shopUrl ? ` <a href="${shopUrl}/shop" style="color: #C084FC;">View shop →</a>` : ""}</p>
     </div>
   `;
 }
