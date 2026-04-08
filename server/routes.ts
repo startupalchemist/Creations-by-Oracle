@@ -2319,11 +2319,11 @@ Generate only the requested fields. Respond in this exact JSON format:
       if (!artwork) return res.status(404).json({ message: "Not found" });
       if (!artwork.printsAvailable) return res.json({ available: false, variants: [] });
 
-      // If artwork has a Printful product linked, fetch live variants (retail_price already includes markup)
-      if (artwork.printfulProductId && isPrintfulConfigured()) {
+      // If artwork has a real synced Printful product, fetch live sync_variants
+      if (artwork.printfulProductId && artwork.printfulProductId !== "template" && isPrintfulConfigured()) {
         const product = await getPrintfulProduct(artwork.printfulProductId);
-        if (product) {
-          const variants = product.variants.map((v) => ({
+        if (product && product.sync_variants?.length) {
+          const variants = product.sync_variants.map((v) => ({
             id: String(v.id),
             label: v.name,
             retailPrice: parseFloat(v.retail_price).toFixed(2),
