@@ -652,11 +652,17 @@ export async function registerRoutes(
 
   async function handleWriteArticle(req: Request, res: Response): Promise<void> {
     try {
-      const { topic, keywords, tone } = req.body;
-      if (!topic) {
+      const articleSchema = z.object({
+        topic: z.string().min(1, "Topic is required"),
+        keywords: z.array(z.string()).optional(),
+        tone: z.string().optional(),
+      });
+      const parsed = articleSchema.safeParse(req.body);
+      if (!parsed.success) {
         res.status(400).json({ message: "Topic is required" });
         return;
       }
+      const { topic, keywords, tone } = parsed.data;
 
       const blogServicesRaw = await storage.getSetting("blog_services");
       const blogServices: { title: string; description: string }[] = (() => {
@@ -1205,8 +1211,9 @@ ${post.excerpt ? `<p style="color:#B3B3B8;font-size:16px;line-height:1.6;margin-
 
   app.post("/api/ai/backlink-research", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { postId } = req.body;
-      if (!postId) return res.status(400).json({ message: "Post ID required" });
+      const parsed = z.object({ postId: z.number().int().positive() }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Post ID required" });
+      const { postId } = parsed.data;
 
       const post = await storage.getPostById(postId);
       if (!post) return res.status(404).json({ message: "Post not found" });
@@ -1261,8 +1268,13 @@ Respond in JSON format:
 
   app.post("/api/backlinks/generate", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { postId, platform } = req.body;
-      if (!postId || !platform) return res.status(400).json({ message: "Post ID and platform required" });
+      const backlinkSchema = z.object({
+        postId: z.number().int().positive(),
+        platform: z.string().min(1, "Platform required"),
+      });
+      const parsed = backlinkSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Post ID and platform required" });
+      const { postId, platform } = parsed.data;
 
       const post = await storage.getPostById(postId);
       if (!post) return res.status(404).json({ message: "Post not found" });
@@ -1411,10 +1423,13 @@ Respond in JSON format:
 
   app.post("/api/newsletters", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { subject, htmlContent } = req.body;
-      if (!subject || !htmlContent) {
-        return res.status(400).json({ message: "Subject and content required" });
-      }
+      const newsletterSchema = z.object({
+        subject: z.string().min(1, "Subject is required"),
+        htmlContent: z.string().min(1, "Content is required"),
+      });
+      const parsed = newsletterSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Subject and content required" });
+      const { subject, htmlContent } = parsed.data;
       const newsletter = await storage.createNewsletter({ subject, htmlContent });
       res.status(201).json(newsletter);
     } catch {
@@ -1749,10 +1764,9 @@ Respond in JSON format:
 
   app.put("/api/settings/blog-services", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { value } = req.body;
-      if (typeof value !== "string") {
-        return res.status(400).json({ message: "Value must be a string" });
-      }
+      const parsedBody = z.object({ value: z.string() }).safeParse(req.body);
+      if (!parsedBody.success) return res.status(400).json({ message: "Value must be a string" });
+      const { value } = parsedBody.data;
       // Validate that value is a JSON array of {title, description} objects
       let parsed: unknown;
       try {
@@ -1793,10 +1807,9 @@ Respond in JSON format:
 
   app.put("/api/settings/:key", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { value } = req.body;
-      if (typeof value !== "string") {
-        return res.status(400).json({ message: "Value must be a string" });
-      }
+      const parsed = z.object({ value: z.string() }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Value must be a string" });
+      const { value } = parsed.data;
       await storage.setSetting(req.params.key, value);
       await logAdminAction(req, "setting_changed", `Setting "${req.params.key}" updated`, { entityType: "setting", entityId: req.params.key });
       res.json({ key: req.params.key, value });
@@ -1906,11 +1919,13 @@ Respond in JSON format:
 
   app.put("/api/seo", authMiddleware, requireRole("root"), async (req, res) => {
     try {
-      const { key, value } = req.body;
-      const allowed = ["seo_global", "seo_pages", "seo_keywords"];
-      if (!allowed.includes(key)) {
-        return res.status(400).json({ message: "Invalid SEO key" });
-      }
+      const seoSchema = z.object({
+        key: z.enum(["seo_global", "seo_pages", "seo_keywords"]),
+        value: z.unknown(),
+      });
+      const parsed = seoSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid SEO key" });
+      const { key, value } = parsed.data;
       await storage.setSetting(key, JSON.stringify(value));
       res.json({ success: true });
     } catch {
@@ -2034,10 +2049,16 @@ Respond in JSON format:
 
   app.post("/api/ai/service-content", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { serviceTitle, description, generateDescription, generatePricing, generateKeyDetails } = req.body;
-      if (!serviceTitle) {
-        return res.status(400).json({ message: "serviceTitle is required" });
-      }
+      const serviceContentSchema = z.object({
+        serviceTitle: z.string().min(1, "serviceTitle is required"),
+        description: z.string().optional(),
+        generateDescription: z.boolean().optional(),
+        generatePricing: z.boolean().optional(),
+        generateKeyDetails: z.boolean().optional(),
+      });
+      const parsed = serviceContentSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "serviceTitle is required" });
+      const { serviceTitle, description, generateDescription, generatePricing, generateKeyDetails } = parsed.data;
       if (!generateDescription && !generatePricing && !generateKeyDetails) {
         return res.status(400).json({ message: "At least one generation toggle must be enabled" });
       }
@@ -2897,8 +2918,14 @@ Generate only the requested fields. Respond in this exact JSON format:
 
   app.post("/api/ai/enhance-artwork", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
-      const { imageUrl, title, medium, dimensions } = req.body;
-      if (!imageUrl) return res.status(400).json({ message: "imageUrl is required" });
+      const parsed = z.object({
+        imageUrl: z.string().min(1, "imageUrl is required"),
+        title: z.string().optional(),
+        medium: z.string().optional(),
+        dimensions: z.string().optional(),
+      }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "imageUrl is required" });
+      const { imageUrl, title, medium, dimensions } = parsed.data;
 
       // Build absolute URL for the image if it's a relative path
       const baseUrl = process.env.REPLIT_DEV_DOMAIN
@@ -2962,8 +2989,9 @@ For suggestedPrice: Based on apparent medium, size, and complexity — suggest a
 
   app.post("/api/ai/capture-guidance", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
-      const { imageData } = req.body;
-      if (!imageData) return res.status(400).json({ message: "imageData is required" });
+      const parsed = z.object({ imageData: z.string().min(1, "imageData is required") }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "imageData is required" });
+      const { imageData } = parsed.data;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
