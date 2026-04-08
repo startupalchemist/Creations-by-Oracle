@@ -2288,8 +2288,27 @@ Generate only the requested fields. Respond in this exact JSON format:
 
   app.post("/api/artworks", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
-      const { title, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, category, featured, seoTitle, seoDescription, seoKeywords, provenanceNotes, editionInfo } = req.body;
-      if (!title) return res.status(400).json({ message: "Title is required" });
+      const artworkBodySchema = z.object({
+        title: z.string().min(1, "Title is required"),
+        medium: z.string().optional(),
+        dimensions: z.string().optional(),
+        year: z.number().int().nullable().optional(),
+        description: z.string().optional(),
+        imageUrl: z.string().optional(),
+        enhancedImageUrl: z.string().nullable().optional(),
+        price: z.union([z.string(), z.number()]).nullable().optional(),
+        forSale: z.boolean().optional(),
+        category: z.enum(artworkCategories as [string, ...string[]]).optional(),
+        featured: z.boolean().optional(),
+        seoTitle: z.string().nullable().optional(),
+        seoDescription: z.string().nullable().optional(),
+        seoKeywords: z.array(z.string()).optional(),
+        provenanceNotes: z.string().nullable().optional(),
+        editionInfo: z.string().nullable().optional(),
+      });
+      const parsed = artworkBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const { title, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, category, featured, seoTitle, seoDescription, seoKeywords, provenanceNotes, editionInfo } = parsed.data;
       let slug = slugify(title);
       const existing = await storage.getArtworkBySlug(slug);
       if (existing) slug = slug + "-" + Date.now().toString(36);
@@ -2785,10 +2804,16 @@ Generate only the requested fields. Respond in this exact JSON format:
 
   app.post("/api/upload", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
-      const { imageData, filename } = req.body;
-      if (!imageData || typeof imageData !== "string") {
-        return res.status(400).json({ message: "imageData is required" });
-      }
+      const uploadSchema = z.object({
+        imageData: z.string().min(1, "imageData is required").refine(
+          (v) => /^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(v),
+          { message: "Only image files are allowed (jpg, png, webp, gif)" }
+        ),
+        filename: z.string().optional(),
+      });
+      const parsed = uploadSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid data" });
+      const { imageData, filename } = parsed.data;
       const mimeMatch = imageData.match(/^data:(image\/[a-zA-Z+]+);base64,/);
       if (!mimeMatch) {
         return res.status(400).json({ message: "Only image files are allowed" });
@@ -3076,9 +3101,16 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       const Stripe = require("stripe");
       const stripe = new Stripe(stripeKey);
 
-      const { artworkId, buyerName, buyerEmail, shippingAddress } = req.body;
-      if (!artworkId) return res.status(400).json({ message: "artworkId required" });
-      const artwork = await storage.getArtworkById(parseInt(artworkId));
+      const checkoutSchema = z.object({
+        artworkId: z.union([z.number().int().positive(), z.string().regex(/^\d+$/).transform(Number)]),
+        buyerName: z.string().nullable().optional(),
+        buyerEmail: z.string().email().nullable().optional(),
+        shippingAddress: z.string().nullable().optional(),
+      });
+      const parsed = checkoutSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const { artworkId, buyerName, buyerEmail, shippingAddress } = parsed.data;
+      const artwork = await storage.getArtworkById(artworkId as number);
       if (!artwork) return res.status(404).json({ message: "Artwork not found" });
       if (!artwork.forSale || artwork.sold) return res.status(400).json({ message: "Artwork not available for purchase" });
       if (!artwork.price) return res.status(400).json({ message: "Artwork has no price set" });
