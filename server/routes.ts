@@ -512,8 +512,15 @@ export async function registerRoutes(
 
   app.post("/api/posts", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
-      const postBodySchema = insertPostSchema.extend({
+      const postBodySchema = z.object({
         title: z.string().min(1, "Title is required"),
+        content: z.string().optional(),
+        excerpt: z.string().nullable().optional(),
+        tags: z.array(z.string()).optional(),
+        seoTitle: z.string().nullable().optional(),
+        seoDescription: z.string().nullable().optional(),
+        status: z.enum(["draft", "queued", "published"]).optional(),
+        featuredImage: z.string().nullable().optional(),
       });
       const parsed = postBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -2493,17 +2500,18 @@ Generate only the requested fields. Respond in this exact JSON format:
 
   app.post("/api/waitlist", async (req, res) => {
     try {
-      const { email, category, artworkId } = req.body;
-      if (!email || typeof email !== "string" || !email.includes("@")) {
-        return res.status(400).json({ message: "Valid email required" });
-      }
-      if (!category || typeof category !== "string") {
-        return res.status(400).json({ message: "Category required" });
-      }
+      const waitlistSchema = z.object({
+        email: z.string().email("Valid email required"),
+        category: z.string().min(1, "Category required"),
+        artworkId: z.union([z.number().int().positive(), z.string().regex(/^\d+$/).transform(Number)]).nullable().optional(),
+      });
+      const parsed = waitlistSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid data" });
+      const { email, category, artworkId } = parsed.data;
       const entry = await storage.createWaitlistEntry({
         email: email.toLowerCase().trim(),
         category: category.trim(),
-        artworkId: artworkId ? parseInt(artworkId) : null,
+        artworkId: artworkId ?? null,
       });
       res.status(201).json(entry);
     } catch {
@@ -3507,10 +3515,16 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       commissionUploadRateMap.set(ip, { count: 1, resetAt: now + COMMISSION_UPLOAD_WINDOW_MS });
     }
     try {
-      const { imageData, filename } = req.body;
-      if (!imageData || typeof imageData !== "string") {
-        return res.status(400).json({ message: "imageData is required" });
-      }
+      const commissionUploadSchema = z.object({
+        imageData: z.string().min(1, "imageData is required").refine(
+          (v) => /^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(v),
+          { message: "Only image files are allowed (jpg, png, webp, gif)" }
+        ),
+        filename: z.string().optional(),
+      });
+      const parsed = commissionUploadSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid data" });
+      const { imageData, filename } = parsed.data;
 
       // Allow only image/* MIME types
       const mimeMatch = imageData.match(/^data:(image\/[a-zA-Z+]+);base64,/);
@@ -3726,7 +3740,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
     }
   });
 
-  app.get("/api/commissions/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+  app.get("/api/commissions/:id", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const commission = await storage.getCommissionById(id);
