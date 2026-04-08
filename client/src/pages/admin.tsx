@@ -470,7 +470,7 @@ function LeadsTab({ toast }: { toast: any }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/5">
-              {["Name", "Email", "Phone", "Vehicle", "Insurance", "Status", "Created"].map((h) => (
+              {["Name", "Email", "Subject", "Message", "Status", "Created"].map((h) => (
                 <th key={h} className="text-left text-xs uppercase tracking-wider text-[#B3B3B8]/50 py-3 px-3 font-medium">
                   {h}
                 </th>
@@ -489,9 +489,10 @@ function LeadsTab({ toast }: { toast: any }) {
                   )}
                 </td>
                 <td className="py-3 px-3 text-[#B3B3B8]">{lead.email}</td>
-                <td className="py-3 px-3 text-[#B3B3B8]">{lead.phone}</td>
-                <td className="py-3 px-3 text-[#B3B3B8]">{lead.vehicle}</td>
-                <td className="py-3 px-3 text-[#B3B3B8]">{lead.insurance || "—"}</td>
+                <td className="py-3 px-3 text-[#B3B3B8] text-xs max-w-[140px] truncate">{lead.subject || "—"}</td>
+                <td className="py-3 px-3 text-[#B3B3B8]/60 text-xs max-w-[200px]">
+                  <p className="line-clamp-2">{lead.message || "—"}</p>
+                </td>
                 <td className="py-3 px-3">
                   <Select
                     value={lead.status}
@@ -4517,10 +4518,25 @@ function ShopTab({ toast }: { toast: any }) {
 
 // ─── OrdersTab ─────────────────────────────────────────────────────────────────
 
+function parseShippingAddress(raw: string | null | undefined): string {
+  if (!raw) return "—";
+  try {
+    const a = JSON.parse(raw);
+    const parts = [
+      a.name,
+      a.street,
+      [a.city, a.state, a.zip].filter(Boolean).join(", "),
+      a.country,
+    ].filter(Boolean);
+    return parts.join("\n") || raw;
+  } catch {
+    return raw;
+  }
+}
+
 function OrdersTab({ toast }: { toast: any }) {
   const { data: orders, isLoading } = useQuery<any[]>({
     queryKey: ["/api/orders"],
-    queryFn: () => fetch("/api/orders").then((r) => r.json()),
   });
 
   return (
@@ -4544,6 +4560,7 @@ function OrdersTab({ toast }: { toast: any }) {
               <tr className="border-b border-white/8" style={{ background: "rgba(255,255,255,0.02)" }}>
                 <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Artwork</th>
                 <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Buyer</th>
+                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Shipping</th>
                 <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Amount</th>
                 <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Status</th>
                 <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Date</th>
@@ -4553,14 +4570,29 @@ function OrdersTab({ toast }: { toast: any }) {
               {orders.map((order: any) => (
                 <tr key={order.id} className="border-b border-white/5" data-testid={`row-order-${order.id}`}>
                   <td className="px-4 py-3 text-[#F5F5F7] text-xs">Artwork #{order.artworkId}</td>
-                  <td className="px-4 py-3"><p className="text-[#F5F5F7] text-xs">{order.buyerName}</p><p className="text-[#B3B3B8]/40 text-[10px]">{order.buyerEmail}</p></td>
+                  <td className="px-4 py-3">
+                    <p className="text-[#F5F5F7] text-xs" data-testid={`text-order-buyer-${order.id}`}>{order.buyerName}</p>
+                    <p className="text-[#B3B3B8]/40 text-[10px]">{order.buyerEmail}</p>
+                  </td>
+                  <td className="px-4 py-3 max-w-[180px]">
+                    <p className="text-[#B3B3B8]/60 text-[10px] leading-relaxed whitespace-pre-line" data-testid={`text-order-shipping-${order.id}`}>
+                      {parseShippingAddress(order.shippingAddress)}
+                    </p>
+                  </td>
                   <td className="px-4 py-3 text-[#C084FC] text-xs">${parseFloat(String(order.amount || 0)).toLocaleString()}</td>
-                  <td className="px-4 py-3"><span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${order.status === "paid" ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"}`}>{order.status}</span></td>
+                  <td className="px-4 py-3">
+                    <span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${order.status === "paid" ? "bg-green-500/20 text-green-400" : order.status === "fulfilled" ? "bg-blue-500/20 text-blue-400" : "bg-amber-500/20 text-amber-400"}`} data-testid={`badge-order-status-${order.id}`}>
+                      {order.status}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-[#B3B3B8]/40 text-xs">{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <div className="px-4 py-3 border-t border-white/5">
+            <p className="text-[#B3B3B8]/25 text-[10px]">{orders.length} order{orders.length !== 1 ? "s" : ""}</p>
+          </div>
         </div>
       )}
     </div>

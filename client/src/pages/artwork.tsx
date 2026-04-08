@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, ShoppingBag, Palette, CheckCircle, Loader2, Share2 } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Palette, CheckCircle, Loader2, Share2, Eye, X, ZoomIn } from "lucide-react";
 import type { Artwork } from "@shared/schema";
 
 function useSessionId() {
@@ -32,8 +32,15 @@ export default function ArtworkPage() {
   const sessionId = useSessionId();
   const [buyerName, setBuyerName] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
+  const [shippingName, setShippingName] = useState("");
+  const [shippingStreet, setShippingStreet] = useState("");
+  const [shippingCity, setShippingCity] = useState("");
+  const [shippingState, setShippingState] = useState("");
+  const [shippingZip, setShippingZip] = useState("");
+  const [shippingCountry, setShippingCountry] = useState("United States");
   const [showBuyForm, setShowBuyForm] = useState(false);
   const [purchased, setPurchased] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const { data: artwork, isLoading } = useQuery<Artwork>({
     queryKey: ["/api/artworks", slug],
@@ -93,12 +100,35 @@ export default function ArtworkPage() {
     };
   }, [artwork]);
 
+  const closeLightbox = useCallback(() => setLightboxOpen(false), []);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeLightbox(); };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [lightboxOpen, closeLightbox]);
+
+  const shippingAddress = JSON.stringify({
+    name: shippingName,
+    street: shippingStreet,
+    city: shippingCity,
+    state: shippingState,
+    zip: shippingZip,
+    country: shippingCountry,
+  });
+
   const checkoutMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", "/api/checkout", {
         artworkId: artwork?.id,
         buyerName,
         buyerEmail,
+        shippingAddress: shippingStreet ? shippingAddress : undefined,
       }),
     onSuccess: async (data) => {
       const json = await data.json();
@@ -167,14 +197,23 @@ export default function ArtworkPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24">
           {/* Image */}
           <div className="relative">
-            <div className="aspect-[3/4] rounded-sm overflow-hidden bg-[#1a1225]">
+            <div
+              className="aspect-[3/4] rounded-sm overflow-hidden bg-[#1a1225] group cursor-zoom-in"
+              onClick={() => { if (artwork.enhancedImageUrl || artwork.imageUrl) setLightboxOpen(true); }}
+              data-testid="div-artwork-image-container"
+            >
               {artwork.enhancedImageUrl || artwork.imageUrl ? (
-                <img
-                  src={artwork.enhancedImageUrl || artwork.imageUrl}
-                  alt={artwork.title}
-                  className="w-full h-full object-cover"
-                  data-testid="img-artwork"
-                />
+                <>
+                  <img
+                    src={artwork.enhancedImageUrl || artwork.imageUrl}
+                    alt={artwork.title}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    data-testid="img-artwork"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/20">
+                    <ZoomIn className="w-8 h-8 text-white/70 drop-shadow-lg" />
+                  </div>
+                </>
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Palette className="w-12 h-12 text-white/10" />
@@ -186,6 +225,7 @@ export default function ArtworkPage() {
                 Sold
               </div>
             )}
+            <p className="text-[#B3B3B8]/25 text-[10px] text-center mt-2">Click image to zoom</p>
           </div>
 
           {/* Details */}
@@ -217,6 +257,15 @@ export default function ArtworkPage() {
                   <div data-testid="text-artwork-year">
                     <p className="text-[9px] uppercase tracking-[0.2em] text-[#B3B3B8]/30 mb-0.5">Year</p>
                     <p className="text-[#B3B3B8]/70 text-sm">{artwork.year}</p>
+                  </div>
+                )}
+                {artwork.viewCount > 0 && (
+                  <div data-testid="text-artwork-views">
+                    <p className="text-[9px] uppercase tracking-[0.2em] text-[#B3B3B8]/30 mb-0.5">Views</p>
+                    <p className="text-[#B3B3B8]/70 text-sm flex items-center gap-1.5">
+                      <Eye className="w-3.5 h-3.5" />
+                      {artwork.viewCount.toLocaleString()}
+                    </p>
                   </div>
                 )}
               </div>
@@ -268,6 +317,8 @@ export default function ArtworkPage() {
                   ) : (
                     <div className="space-y-3 border border-white/10 rounded-sm p-4" style={{ background: "rgba(255,255,255,0.02)" }}>
                       <p className="text-[#B3B3B8]/50 text-xs">Enter your details to proceed to secure checkout.</p>
+
+                      <p className="text-[9px] uppercase tracking-[0.18em] text-[#B3B3B8]/40 pt-1">Contact</p>
                       <Input
                         value={buyerName}
                         onChange={(e) => setBuyerName(e.target.value)}
@@ -283,7 +334,56 @@ export default function ArtworkPage() {
                         className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
                         data-testid="input-buyer-email"
                       />
-                      <div className="flex gap-2">
+
+                      <p className="text-[9px] uppercase tracking-[0.18em] text-[#B3B3B8]/40 pt-1">Shipping Address</p>
+                      <Input
+                        value={shippingName}
+                        onChange={(e) => setShippingName(e.target.value)}
+                        placeholder="Recipient name (if different)"
+                        className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                        data-testid="input-shipping-name"
+                      />
+                      <Input
+                        value={shippingStreet}
+                        onChange={(e) => setShippingStreet(e.target.value)}
+                        placeholder="Street address"
+                        className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                        data-testid="input-shipping-street"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          value={shippingCity}
+                          onChange={(e) => setShippingCity(e.target.value)}
+                          placeholder="City"
+                          className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                          data-testid="input-shipping-city"
+                        />
+                        <Input
+                          value={shippingState}
+                          onChange={(e) => setShippingState(e.target.value)}
+                          placeholder="State / Province"
+                          className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                          data-testid="input-shipping-state"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          value={shippingZip}
+                          onChange={(e) => setShippingZip(e.target.value)}
+                          placeholder="Postal code"
+                          className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                          data-testid="input-shipping-zip"
+                        />
+                        <Input
+                          value={shippingCountry}
+                          onChange={(e) => setShippingCountry(e.target.value)}
+                          placeholder="Country"
+                          className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                          data-testid="input-shipping-country"
+                        />
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
                         <Button
                           className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-auto py-2.5 flex-1"
                           disabled={!buyerName.trim() || !buyerEmail.trim() || checkoutMutation.isPending}
@@ -343,6 +443,33 @@ export default function ArtworkPage() {
           </div>
         </div>
       </div>
+
+      {/* Lightbox */}
+      {lightboxOpen && (artwork.enhancedImageUrl || artwork.imageUrl) && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm"
+          onClick={closeLightbox}
+          data-testid="div-lightbox-overlay"
+        >
+          <button
+            className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-white"
+            onClick={closeLightbox}
+            data-testid="button-lightbox-close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img
+            src={artwork.enhancedImageUrl || artwork.imageUrl}
+            alt={artwork.title}
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-sm shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="img-lightbox"
+          />
+          <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/40 text-[10px] uppercase tracking-[0.2em]">
+            Press Esc or click outside to close
+          </p>
+        </div>
+      )}
     </div>
   );
 }

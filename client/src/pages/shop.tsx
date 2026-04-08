@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Palette, ArrowRight, Filter } from "lucide-react";
+import { Palette, ArrowRight, Filter, Eye } from "lucide-react";
 import type { Artwork } from "@shared/schema";
 import { artworkCategories } from "@shared/schema";
 import { useOgImage } from "@/hooks/use-og-image";
@@ -62,11 +62,21 @@ function ArtworkCard({ artwork }: { artwork: Artwork }) {
           <p className="text-[#B3B3B8]/40 text-[9px] uppercase tracking-[0.2em] mb-1">{artwork.category}</p>
           <h3 className="text-[#F5F5F7] text-sm font-medium tracking-wide group-hover:text-[#C084FC] transition-colors">{artwork.title}</h3>
           <p className="text-[#B3B3B8]/50 text-xs mt-0.5">{artwork.medium}{artwork.dimensions ? ` · ${artwork.dimensions}` : ""}{artwork.year ? ` · ${artwork.year}` : ""}</p>
-          {artwork.price && artwork.forSale && !artwork.sold && (
-            <p className="text-[#C084FC] text-sm mt-1.5 font-medium">${parseFloat(String(artwork.price)).toLocaleString()}</p>
-          )}
-          {artwork.sold && <p className="text-[#B3B3B8]/40 text-sm mt-1.5">Sold</p>}
-          {!artwork.forSale && !artwork.sold && <p className="text-[#B3B3B8]/40 text-xs mt-1.5">Not for sale</p>}
+          <div className="flex items-center justify-between mt-1.5">
+            <div>
+              {artwork.price && artwork.forSale && !artwork.sold && (
+                <p className="text-[#C084FC] text-sm font-medium">${parseFloat(String(artwork.price)).toLocaleString()}</p>
+              )}
+              {artwork.sold && <p className="text-[#B3B3B8]/40 text-sm">Sold</p>}
+              {!artwork.forSale && !artwork.sold && <p className="text-[#B3B3B8]/40 text-xs">Not for sale</p>}
+            </div>
+            {artwork.viewCount > 0 && (
+              <div className="flex items-center gap-1 text-[#B3B3B8]/30" data-testid={`text-view-count-${artwork.id}`}>
+                <Eye className="w-3 h-3" />
+                <span className="text-[10px]">{artwork.viewCount.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Link>
