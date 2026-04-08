@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  CardElement,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
 
 const STYLES = ["Realism", "Fusion", "Oracle"] as const;
 const SIZES = [
@@ -30,13 +37,18 @@ interface PricingData {
   subjectFees: Record<Style, Record<Size, number>>;
 }
 
+interface PriceBreakdown {
+  base: number;
+  addon: number;
+  subjFee: number;
+  total: number;
+  deposit: number;
+}
+
 const STYLE_DESCRIPTIONS: Record<Style, string> = {
-  Realism:
-    "True-to-life portraiture with meticulous attention to texture, light, and likeness. Perfect for timeless keepsakes.",
-  Fusion:
-    "A blend of realism and expressive abstraction. Emotionally resonant with a contemporary aesthetic.",
-  Oracle:
-    "Oracle's signature style — layered symbolism, rich colour fields, and spiritual depth.",
+  Realism: "True-to-life portraiture with meticulous attention to texture, light, and likeness. Perfect for timeless keepsakes.",
+  Fusion: "A blend of realism and expressive abstraction. Emotionally resonant with a contemporary aesthetic.",
+  Oracle: "Oracle's signature style — layered symbolism, rich colour fields, and spiritual depth.",
 };
 
 const FORMAT_DESCRIPTIONS: Record<Format, string> = {
@@ -54,6 +66,18 @@ const STEP_LABELS = [
   "Your Details",
   "Review & Pay",
 ];
+
+const CARD_STYLE = {
+  style: {
+    base: {
+      color: "#F5F5F7",
+      fontFamily: "Helvetica Neue, Arial, sans-serif",
+      fontSize: "14px",
+      "::placeholder": { color: "rgba(255,255,255,0.2)" },
+    },
+    invalid: { color: "#f87171" },
+  },
+};
 
 function StepDots({ current, total }: { current: number; total: number }) {
   return (
@@ -75,23 +99,76 @@ function StepDots({ current, total }: { current: number; total: number }) {
 }
 
 const stepVariants = {
-  enter: (dir: number) => ({
-    x: dir > 0 ? 40 : -40,
-    opacity: 0,
-  }),
+  enter: (dir: number) => ({ x: dir > 0 ? 40 : -40, opacity: 0 }),
   center: { x: 0, opacity: 1 },
-  exit: (dir: number) => ({
-    x: dir > 0 ? -40 : 40,
-    opacity: 0,
-  }),
+  exit: (dir: number) => ({ x: dir > 0 ? -40 : 40, opacity: 0 }),
 };
 
-interface PriceBreakdown {
-  base: number;
-  addon: number;
-  subjFee: number;
-  total: number;
-  deposit: number;
+// Stripe card payment sub-component
+function CardPaymentForm({
+  clientSecret,
+  depositAmount,
+  onSuccess,
+  onError,
+}: {
+  clientSecret: string;
+  depositAmount: number;
+  onSuccess: () => void;
+  onError: (msg: string) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [processing, setProcessing] = useState(false);
+  const [cardError, setCardError] = useState("");
+
+  const handleSubmit = async () => {
+    if (!stripe || !elements) return;
+    const cardElement = elements.getElement(CardElement);
+    if (!cardElement) return;
+    setProcessing(true);
+    setCardError("");
+    const { error } = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: { card: cardElement },
+    });
+    setProcessing(false);
+    if (error) {
+      setCardError(error.message || "Payment failed. Please try again.");
+      onError(error.message || "Payment failed");
+    } else {
+      onSuccess();
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="p-4 rounded-lg border border-white/10 bg-white/[0.03]">
+        <CardElement options={CARD_STYLE} />
+      </div>
+      {cardError && (
+        <p className="text-red-400 text-xs" data-testid="text-card-error">
+          {cardError}
+        </p>
+      )}
+      <Button
+        data-testid="button-pay-deposit"
+        onClick={handleSubmit}
+        disabled={!stripe || processing}
+        className="w-full bg-[#C084FC] hover:bg-[#a855f7] text-black font-medium py-3 h-auto disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {processing ? (
+          <>
+            <Loader2 size={16} className="mr-2 animate-spin" />
+            Processing…
+          </>
+        ) : (
+          <>
+            <Lock size={14} className="mr-2" />
+            Pay Deposit — ${depositAmount.toLocaleString()}
+          </>
+        )}
+      </Button>
+    </div>
+  );
 }
 
 export default function Commission() {
@@ -111,6 +188,12 @@ export default function Commission() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Payment state (set when POST /api/commissions returns clientSecret)
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [depositAmountForPayment, setDepositAmountForPayment] = useState(0);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null);
+
   const searchParams = new URLSearchParams(window.location.search);
   const deposited = searchParams.get("deposited") === "true";
   const cancelled = searchParams.get("cancelled") === "true";
@@ -119,19 +202,24 @@ export default function Commission() {
     queryKey: ["/api/commission/pricing"],
   });
 
+  // Load Stripe publishable key
+  useEffect(() => {
+    const loadStripeKey = async () => {
+      const res = await fetch("/api/stripe/public-key");
+      const data = await res.json();
+      if (data.publishableKey) {
+        setStripePromise(loadStripe(data.publishableKey));
+      }
+    };
+    loadStripeKey();
+  }, []);
+
   useEffect(() => {
     if (deposited) {
-      toast({
-        title: "Deposit received!",
-        description: "Your commission is confirmed. Check your email for details.",
-      });
+      toast({ title: "Deposit received!", description: "Your commission is confirmed. Check your email." });
     }
     if (cancelled) {
-      toast({
-        title: "Checkout cancelled",
-        description: "Your details are saved. Come back anytime.",
-        variant: "destructive",
-      });
+      toast({ title: "Checkout cancelled", description: "Come back anytime.", variant: "destructive" });
     }
   }, []);
 
@@ -146,9 +234,10 @@ export default function Commission() {
     return { base, addon, subjFee, total, deposit };
   }, [pricing, style, size, format, extraSubjects]);
 
-  const { total, deposit } = calcPrice();
+  const priceData = calcPrice();
+  const { total, deposit } = priceData;
 
-  const submitMutation = useMutation({
+  const initPaymentMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/commissions", {
         style,
@@ -163,23 +252,18 @@ export default function Commission() {
       });
       return res.json();
     },
-    onSuccess: (data: { requiresPayment: boolean; url?: string }) => {
-      if (data.requiresPayment && data.url) {
-        window.location.href = data.url;
+    onSuccess: (data: { requiresPayment: boolean; clientSecret?: string; depositAmount?: number }) => {
+      if (data.requiresPayment && data.clientSecret) {
+        setClientSecret(data.clientSecret);
+        setDepositAmountForPayment(data.depositAmount || deposit);
       } else {
-        toast({
-          title: "Commission request submitted!",
-          description: "We'll be in touch shortly to discuss your commission.",
-        });
+        // No Stripe configured
+        toast({ title: "Commission request submitted!", description: "We'll be in touch shortly." });
         setLocation("/");
       }
     },
     onError: (e: Error) => {
-      toast({
-        title: "Submission failed",
-        description: e?.message || "Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "Submission failed", description: e?.message || "Please try again.", variant: "destructive" });
     },
   });
 
@@ -194,10 +278,7 @@ export default function Commission() {
         const reader = new FileReader();
         reader.onload = async (e) => {
           const base64 = (e.target?.result as string).split(",")[1];
-          const res = await apiRequest("POST", "/api/upload", {
-            imageData: base64,
-            filename: file.name,
-          });
+          const res = await apiRequest("POST", "/api/upload", { imageData: base64, filename: file.name });
           const data = await res.json();
           setReferenceImages((prev) => [...prev, { url: data.url, name: file.name }]);
           setUploading(false);
@@ -233,7 +314,8 @@ export default function Commission() {
     return true;
   };
 
-  if (deposited) {
+  // Payment success screen
+  if (paymentSuccess || deposited) {
     return (
       <div className="min-h-screen bg-[#08060e] flex items-center justify-center px-4">
         <div className="text-center max-w-md">
@@ -248,7 +330,7 @@ export default function Commission() {
             Commission Confirmed
           </h1>
           <p className="text-white/50 text-sm mb-8 leading-relaxed">
-            Your deposit has been received. Oracle will review your request and reach out within 2–3 business days to begin the process.
+            Your deposit has been received. Oracle will review your request and reach out within 2–3 business days to begin.
           </p>
           <Button
             onClick={() => setLocation("/")}
@@ -262,8 +344,6 @@ export default function Commission() {
     );
   }
 
-  const priceData = calcPrice();
-
   return (
     <div className="min-h-screen bg-[#08060e] text-white">
       <div className="max-w-6xl mx-auto px-4 py-16">
@@ -271,11 +351,8 @@ export default function Commission() {
 
           {/* Left: Main wizard */}
           <div>
-            {/* Header */}
             <div className="mb-10">
-              <p className="text-[#C084FC] text-xs uppercase tracking-[4px] mb-3">
-                Creations by Oracle
-              </p>
+              <p className="text-[#C084FC] text-xs uppercase tracking-[4px] mb-3">Creations by Oracle</p>
               <h1
                 className="text-4xl font-light mb-2"
                 style={{ fontFamily: "Georgia, serif" }}
@@ -305,7 +382,6 @@ export default function Commission() {
               </div>
             )}
 
-            {/* Step Content */}
             <AnimatePresence mode="wait" custom={dir}>
               <motion.div
                 key={step}
@@ -327,9 +403,7 @@ export default function Commission() {
                           data-testid={`button-style-${s.toLowerCase()}`}
                           onClick={() => setStyle(s)}
                           className={`w-full text-left p-5 rounded-lg border transition-all duration-200 ${
-                            style === s
-                              ? "border-[#C084FC] bg-[#C084FC]/10"
-                              : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                            style === s ? "border-[#C084FC] bg-[#C084FC]/10" : "border-white/10 bg-white/[0.02] hover:border-white/20"
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1">
@@ -361,18 +435,14 @@ export default function Commission() {
                             data-testid={`button-size-${s.replace(/[^a-z0-9]/gi, "-").toLowerCase()}`}
                             onClick={() => setSize(s)}
                             className={`text-left p-4 rounded-lg border transition-all duration-200 ${
-                              size === s
-                                ? "border-[#C084FC] bg-[#C084FC]/10"
-                                : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                              size === s ? "border-[#C084FC] bg-[#C084FC]/10" : "border-white/10 bg-white/[0.02] hover:border-white/20"
                             }`}
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-sm font-medium text-white">{s}</span>
                               {size === s && <Check size={14} className="text-[#C084FC]" />}
                             </div>
-                            {price !== null && (
-                              <p className="text-xs text-[#C084FC] mt-1">${price?.toLocaleString()}</p>
-                            )}
+                            {price !== null && <p className="text-xs text-[#C084FC] mt-1">${price?.toLocaleString()}</p>}
                           </button>
                         );
                       })}
@@ -393,26 +463,18 @@ export default function Commission() {
                             data-testid={`button-format-${f.toLowerCase()}`}
                             onClick={() => setFormat(f)}
                             className={`w-full text-left p-5 rounded-lg border transition-all duration-200 ${
-                              format === f
-                                ? "border-[#C084FC] bg-[#C084FC]/10"
-                                : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                              format === f ? "border-[#C084FC] bg-[#C084FC]/10" : "border-white/10 bg-white/[0.02] hover:border-white/20"
                             }`}
                           >
                             <div className="flex items-center justify-between mb-1">
                               <span className="font-medium text-white">{f}</span>
                               <div className="flex items-center gap-2">
-                                {addon !== null && addon > 0 && (
-                                  <span className="text-xs text-white/40">+${addon}</span>
-                                )}
-                                {addon === 0 && (
-                                  <span className="text-xs text-[#C084FC]">Included</span>
-                                )}
+                                {addon !== null && addon > 0 && <span className="text-xs text-white/40">+${addon}</span>}
+                                {addon === 0 && <span className="text-xs text-[#C084FC]">Included</span>}
                                 {format === f && <Check size={16} className="text-[#C084FC]" />}
                               </div>
                             </div>
-                            <p className="text-xs text-white/40 leading-relaxed">
-                              {FORMAT_DESCRIPTIONS[f]}
-                            </p>
+                            <p className="text-xs text-white/40 leading-relaxed">{FORMAT_DESCRIPTIONS[f]}</p>
                           </button>
                         );
                       })}
@@ -420,7 +482,7 @@ export default function Commission() {
                   </div>
                 )}
 
-                {/* Step 3: Extra Subjects */}
+                {/* Step 3: Subjects */}
                 {step === 3 && (
                   <div>
                     <h2 className="text-xl font-light mb-2 text-white/80">How many subjects?</h2>
@@ -431,8 +493,8 @@ export default function Commission() {
                       <button
                         data-testid="button-subject-decrease"
                         onClick={() => setExtraSubjects((n) => Math.max(0, n - 1))}
-                        className="w-12 h-12 rounded-full border border-white/20 text-white text-xl hover:border-[#C084FC] transition-colors"
                         disabled={extraSubjects === 0}
+                        className="w-12 h-12 rounded-full border border-white/20 text-white text-xl hover:border-[#C084FC] transition-colors"
                       >
                         −
                       </button>
@@ -460,7 +522,7 @@ export default function Commission() {
                       <div className="mt-8 p-4 rounded-lg border border-white/10 bg-white/[0.02]">
                         <div className="flex items-center gap-2 mb-1">
                           <Info size={12} className="text-white/40" />
-                          <p className="text-xs text-white/40">Subject fee breakdown</p>
+                          <p className="text-xs text-white/40">Subject fee</p>
                         </div>
                         <p className="text-sm text-white/70">
                           {extraSubjects} × ${pricing.subjectFees[style]?.[size]?.toLocaleString()} ={" "}
@@ -478,7 +540,7 @@ export default function Commission() {
                   <div>
                     <h2 className="text-xl font-light mb-2 text-white/80">Reference photos</h2>
                     <p className="text-white/40 text-sm mb-6">
-                      Upload up to 5 reference photos. Clear, well-lit photos help achieve the best likeness.
+                      Upload up to 5 reference photos. Clear, well-lit images help achieve the best likeness.
                     </p>
                     <input
                       ref={fileInputRef}
@@ -506,7 +568,7 @@ export default function Commission() {
                           <Upload size={24} className="mx-auto mb-2 text-white/30" />
                         )}
                         <p className="text-sm text-white/40">
-                          {uploading ? "Uploading…" : "Click to upload photos (JPG, PNG, WEBP)"}
+                          {uploading ? "Uploading…" : "Click to upload (JPG, PNG, WEBP)"}
                         </p>
                         <p className="text-xs text-white/20 mt-1">{referenceImages.length}/5 uploaded</p>
                       </button>
@@ -534,26 +596,19 @@ export default function Commission() {
                       </div>
                     )}
                     {referenceImages.length === 0 && (
-                      <p className="text-xs text-white/30 text-center mt-2">
-                        Reference photos are optional but recommended
-                      </p>
+                      <p className="text-xs text-white/30 text-center mt-2">Optional but recommended</p>
                     )}
                   </div>
                 )}
 
-                {/* Step 5: Your Details (Notes + Contact combined) */}
+                {/* Step 5: Your Details (contact + notes) */}
                 {step === 5 && (
                   <div>
                     <h2 className="text-xl font-light mb-2 text-white/80">Your details</h2>
-                    <p className="text-white/40 text-sm mb-6">
-                      Tell us about yourself and share any notes for the artist.
-                    </p>
-
+                    <p className="text-white/40 text-sm mb-6">Tell us about yourself and share any notes for the artist.</p>
                     <div className="space-y-4 mb-6">
                       <div>
-                        <label className="text-xs text-white/40 uppercase tracking-widest mb-1.5 block">
-                          Full Name *
-                        </label>
+                        <label className="text-xs text-white/40 uppercase tracking-widest mb-1.5 block">Full Name *</label>
                         <Input
                           data-testid="input-customer-name"
                           value={customerName}
@@ -563,9 +618,7 @@ export default function Commission() {
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-white/40 uppercase tracking-widest mb-1.5 block">
-                          Email Address *
-                        </label>
+                        <label className="text-xs text-white/40 uppercase tracking-widest mb-1.5 block">Email Address *</label>
                         <Input
                           data-testid="input-customer-email"
                           type="email"
@@ -576,9 +629,7 @@ export default function Commission() {
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-white/40 uppercase tracking-widest mb-1.5 block">
-                          Phone Number
-                        </label>
+                        <label className="text-xs text-white/40 uppercase tracking-widest mb-1.5 block">Phone Number</label>
                         <Input
                           data-testid="input-customer-phone"
                           type="tel"
@@ -589,16 +640,13 @@ export default function Commission() {
                         />
                       </div>
                     </div>
-
                     <div>
-                      <label className="text-xs text-white/40 uppercase tracking-widest mb-1.5 block">
-                        Notes for the Artist
-                      </label>
+                      <label className="text-xs text-white/40 uppercase tracking-widest mb-1.5 block">Notes for the Artist</label>
                       <Textarea
                         data-testid="input-commission-notes"
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        placeholder="e.g. This is a gift for my mother — she loves warm tones and sunflowers..."
+                        placeholder="e.g. This is a gift — she loves warm tones and sunflowers..."
                         className="bg-white/[0.03] border-white/10 text-white placeholder:text-white/20 min-h-[120px] focus:border-[#C084FC]/50 resize-none"
                       />
                       <p className="text-xs text-white/20 mt-1 text-right">{notes.length} characters</p>
@@ -611,30 +659,25 @@ export default function Commission() {
                   <div>
                     <h2 className="text-xl font-light mb-2 text-white/80">Review your commission</h2>
                     <p className="text-white/40 text-sm mb-8">
-                      Confirm the details below, then pay the 50% deposit to begin.
+                      Confirm details, then enter your card to pay the 50% deposit.
                     </p>
 
-                    {/* Full order summary */}
+                    {/* Order summary */}
                     <div className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
                       <div className="p-5 border-b border-white/10">
-                        <p className="text-xs text-white/40 uppercase tracking-widest mb-3">Commission Details</p>
+                        <p className="text-xs text-white/40 uppercase tracking-widest mb-3">Commission</p>
                         <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-white/60">Style</span>
-                            <span className="text-white font-medium">{style}</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-white/60">Canvas Size</span>
-                            <span className="text-white font-medium">{size}</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-white/60">Format</span>
-                            <span className="text-white font-medium">{format}</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-white/60">Subjects</span>
-                            <span className="text-white font-medium">{1 + extraSubjects}</span>
-                          </div>
+                          {[
+                            { label: "Style", value: style },
+                            { label: "Size", value: size },
+                            { label: "Format", value: format },
+                            { label: "Subjects", value: String(1 + extraSubjects) },
+                          ].map(({ label, value }) => (
+                            <div key={label} className="flex justify-between text-sm">
+                              <span className="text-white/60">{label}</span>
+                              <span className="text-white font-medium">{value}</span>
+                            </div>
+                          ))}
                           {referenceImages.length > 0 && (
                             <div className="flex justify-between text-sm">
                               <span className="text-white/60">Reference Photos</span>
@@ -645,28 +688,20 @@ export default function Commission() {
                       </div>
 
                       <div className="p-5 border-b border-white/10">
-                        <p className="text-xs text-white/40 uppercase tracking-widest mb-3">Contact</p>
-                        <div className="space-y-1">
-                          <p className="text-sm text-white">{customerName}</p>
-                          <p className="text-sm text-white/60">{customerEmail}</p>
-                          {customerPhone && <p className="text-sm text-white/60">{customerPhone}</p>}
-                        </div>
+                        <p className="text-xs text-white/40 uppercase tracking-widest mb-2">Contact</p>
+                        <p className="text-sm text-white">{customerName}</p>
+                        <p className="text-sm text-white/60">{customerEmail}</p>
+                        {customerPhone && <p className="text-sm text-white/60">{customerPhone}</p>}
                         {notes && (
-                          <div className="mt-3 pt-3 border-t border-white/10">
-                            <p className="text-xs text-white/40 mb-1">Notes</p>
-                            <p className="text-xs text-white/60 leading-relaxed">{notes}</p>
-                          </div>
+                          <p className="text-xs text-white/40 mt-2 leading-relaxed italic">{notes}</p>
                         )}
                       </div>
 
-                      {/* Pricing breakdown */}
                       <div className="p-5">
                         <p className="text-xs text-white/40 uppercase tracking-widest mb-3">Pricing</p>
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
-                            <span className="text-white/60">
-                              {style} {size}
-                            </span>
+                            <span className="text-white/60">{style} {size}</span>
                             <span className="text-white">${priceData.base.toLocaleString()}</span>
                           </div>
                           {priceData.addon > 0 && (
@@ -677,17 +712,13 @@ export default function Commission() {
                           )}
                           {priceData.subjFee > 0 && (
                             <div className="flex justify-between text-sm">
-                              <span className="text-white/60">
-                                {extraSubjects} extra subject{extraSubjects > 1 ? "s" : ""}
-                              </span>
+                              <span className="text-white/60">{extraSubjects} extra subject{extraSubjects > 1 ? "s" : ""}</span>
                               <span className="text-white">+${priceData.subjFee.toLocaleString()}</span>
                             </div>
                           )}
                           <div className="flex justify-between text-sm pt-2 border-t border-white/10 font-medium">
-                            <span className="text-white">Commission Total</span>
-                            <span className="text-white" data-testid="text-review-total">
-                              ${priceData.total.toLocaleString()}
-                            </span>
+                            <span className="text-white">Total</span>
+                            <span className="text-white" data-testid="text-review-total">${priceData.total.toLocaleString()}</span>
                           </div>
                         </div>
                       </div>
@@ -695,11 +726,9 @@ export default function Commission() {
 
                     {/* Deposit highlight */}
                     <div className="rounded-xl border border-[#C084FC]/30 bg-[#C084FC]/8 p-5 mb-6">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between mb-4">
                         <div>
-                          <p className="text-xs text-[#C084FC]/70 uppercase tracking-widest mb-1">
-                            Deposit Due Today (50%)
-                          </p>
+                          <p className="text-xs text-[#C084FC]/70 uppercase tracking-widest mb-1">Deposit Due Today (50%)</p>
                           <p
                             className="text-3xl font-light text-white"
                             style={{ fontFamily: "Georgia, serif" }}
@@ -711,16 +740,49 @@ export default function Commission() {
                             Remaining ${(priceData.total - priceData.deposit).toLocaleString()} due on completion
                           </p>
                         </div>
-                        <div className="w-12 h-12 rounded-full bg-[#C084FC]/20 flex items-center justify-center">
-                          <Lock size={18} className="text-[#C084FC]" />
-                        </div>
+                        <Lock size={20} className="text-[#C084FC]/60" />
                       </div>
+
+                      {/* Card payment area */}
+                      {!clientSecret ? (
+                        <Button
+                          data-testid="button-commission-submit"
+                          onClick={() => initPaymentMutation.mutate()}
+                          disabled={initPaymentMutation.isPending}
+                          className="w-full bg-[#C084FC] hover:bg-[#a855f7] text-black font-medium py-3 h-auto"
+                        >
+                          {initPaymentMutation.isPending ? (
+                            <>
+                              <Loader2 size={16} className="mr-2 animate-spin" />
+                              Preparing payment…
+                            </>
+                          ) : (
+                            <>
+                              <Lock size={14} className="mr-2" />
+                              Enter Card Details
+                            </>
+                          )}
+                        </Button>
+                      ) : stripePromise ? (
+                        <Elements stripe={stripePromise} options={{ clientSecret }}>
+                          <CardPaymentForm
+                            clientSecret={clientSecret}
+                            depositAmount={depositAmountForPayment || priceData.deposit}
+                            onSuccess={() => setPaymentSuccess(true)}
+                            onError={(msg) => toast({ title: "Payment failed", description: msg, variant: "destructive" })}
+                          />
+                        </Elements>
+                      ) : (
+                        <div className="flex items-center gap-2 text-white/40 text-sm">
+                          <Loader2 size={14} className="animate-spin" />
+                          Loading payment form…
+                        </div>
+                      )}
                     </div>
 
-                    {/* Security note */}
-                    <div className="flex items-center gap-2 text-white/30 text-xs mb-2">
+                    <div className="flex items-center gap-2 text-white/30 text-xs">
                       <Shield size={12} />
-                      <span>Payments processed securely via Stripe. Your details are never stored on our servers.</span>
+                      <span>Payments processed securely via Stripe. Your card details are never stored on our servers.</span>
                     </div>
                   </div>
                 )}
@@ -734,16 +796,14 @@ export default function Commission() {
                 onClick={goPrev}
                 disabled={step === 0}
                 className={`flex items-center gap-2 text-sm transition-colors ${
-                  step === 0
-                    ? "text-white/20 cursor-not-allowed"
-                    : "text-white/50 hover:text-white"
+                  step === 0 ? "text-white/20 cursor-not-allowed" : "text-white/50 hover:text-white"
                 }`}
               >
                 <ArrowLeft size={16} />
                 Back
               </button>
 
-              {step < STEP_LABELS.length - 1 ? (
+              {step < STEP_LABELS.length - 1 && (
                 <Button
                   data-testid="button-commission-next"
                   onClick={goNext}
@@ -753,36 +813,12 @@ export default function Commission() {
                   Next
                   <ChevronRight size={16} className="ml-1" />
                 </Button>
-              ) : (
-                <Button
-                  data-testid="button-commission-submit"
-                  onClick={() => submitMutation.mutate()}
-                  disabled={submitMutation.isPending}
-                  className="bg-[#C084FC] hover:bg-[#a855f7] text-black font-medium px-8 disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  {submitMutation.isPending ? (
-                    <>
-                      <Loader2 size={16} className="mr-2 animate-spin" />
-                      Processing…
-                    </>
-                  ) : (
-                    <>
-                      Pay Deposit — ${priceData.deposit.toLocaleString()}
-                      <ChevronRight size={16} className="ml-1" />
-                    </>
-                  )}
-                </Button>
               )}
             </div>
 
             {/* Trust signals */}
             <div className="mt-12 pt-8 border-t border-white/5 flex flex-wrap gap-6 justify-center lg:justify-start">
-              {[
-                "50% deposit to begin",
-                "Balance due on completion",
-                "Satisfaction guaranteed",
-                "2–4 week turnaround",
-              ].map((item) => (
+              {["50% deposit to begin", "Balance due on completion", "Satisfaction guaranteed", "2–4 week turnaround"].map((item) => (
                 <div key={item} className="flex items-center gap-2">
                   <Check size={12} className="text-[#C084FC]" />
                   <span className="text-xs text-white/30">{item}</span>
@@ -791,15 +827,13 @@ export default function Commission() {
             </div>
           </div>{/* end left column */}
 
-          {/* Right: Sticky price summary (desktop only) */}
+          {/* Right: Sticky summary (desktop) */}
           <div className="hidden lg:block">
             <div
               data-testid="div-sticky-price-summary"
               className="sticky top-8 rounded-xl border border-white/10 bg-white/[0.02] p-6"
             >
-              <p className="text-xs text-white/40 uppercase tracking-widest mb-5">
-                Your Commission
-              </p>
+              <p className="text-xs text-white/40 uppercase tracking-widest mb-5">Your Commission</p>
 
               <div className="space-y-3 mb-6">
                 {style ? (
@@ -873,10 +907,7 @@ export default function Commission() {
                     </div>
                     <div className="p-3 rounded-lg bg-[#C084FC]/10 border border-[#C084FC]/20">
                       <p className="text-xs text-white/40 mb-0.5">Deposit due now (50%)</p>
-                      <p
-                        data-testid="text-sticky-deposit"
-                        className="text-xl font-light text-[#C084FC]"
-                      >
+                      <p data-testid="text-sticky-deposit" className="text-xl font-light text-[#C084FC]">
                         ${deposit.toLocaleString()}
                       </p>
                     </div>
@@ -884,14 +915,12 @@ export default function Commission() {
                 </>
               ) : (
                 <div className="border-t border-white/10 pt-4">
-                  <p className="text-xs text-white/20 text-center">
-                    Select a style and size to see pricing
-                  </p>
+                  <p className="text-xs text-white/20 text-center">Select a style and size to see pricing</p>
                 </div>
               )}
 
               <div className="mt-5 space-y-2">
-                {["Secure Stripe checkout", "Balance due on completion", "2–4 week turnaround"].map((item) => (
+                {["Secure card payment via Stripe", "Balance due on completion", "2–4 week turnaround"].map((item) => (
                   <div key={item} className="flex items-center gap-2">
                     <Check size={10} className="text-[#C084FC] flex-shrink-0" />
                     <span className="text-xs text-white/30">{item}</span>
@@ -901,7 +930,7 @@ export default function Commission() {
             </div>
           </div>
 
-        </div>{/* end grid */}
+        </div>
       </div>
     </div>
   );

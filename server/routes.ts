@@ -2556,15 +2556,17 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
           fireWebhooks("order.created", { artworkId, sessionId: session.id, amount: session.amount_total });
         }
 
-        // Handle commission deposit payments
-        if (session.metadata?.commissionType === "deposit") {
-          const commission = await storage.getCommissionBySessionId(session.id);
+      }
+      // Handle commission deposit via PaymentIntent
+      if (event.type === "payment_intent.succeeded") {
+        const paymentIntent = event.data.object;
+        if (paymentIntent.metadata?.commissionType === "deposit") {
+          const commission = await storage.getCommissionBySessionId(paymentIntent.id);
           if (commission) {
             await storage.updateCommission(commission.id, {
               status: "deposit_paid",
-              stripePaymentIntentId: session.payment_intent,
+              stripePaymentIntentId: paymentIntent.id,
             });
-            // Send confirmation emails
             try {
               const baseUrl = process.env.REPLIT_DEV_DOMAIN
                 ? `https://${process.env.REPLIT_DEV_DOMAIN}`
@@ -2589,14 +2591,18 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
                   html: buildArtistEmail({ commission, totalPrice, depositAmount }),
                 });
               }
-            } catch (emailErr: any) {
-              console.error("Commission deposit email error:", emailErr?.message);
+            } catch (emailErr: unknown) {
+              const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+              console.error("Commission deposit email error:", msg);
             }
           }
         }
       }
+
       res.json({ received: true });
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Webhook error:", msg);
       res.status(500).json({ message: "Webhook error" });
     }
   });
@@ -2608,6 +2614,13 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
     } catch {
       res.status(500).json({ message: "Failed to fetch orders" });
     }
+  });
+
+  // ─── Stripe Public Key ───────────────────────────────────────────
+
+  app.get("/api/stripe/public-key", async (_req, res) => {
+    const pk = process.env.STRIPE_PUBLISHABLE_KEY || "";
+    res.json({ publishableKey: pk });
   });
 
   // ─── Commission Pricing ──────────────────────────────────────────
@@ -2720,24 +2733,15 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         return res.status(201).json({ commission, requiresPayment: false });
       }
 
-      // Stripe is configured — create checkout session
+      // Stripe is configured — create PaymentIntent for embedded card flow
       const Stripe = require("stripe");
       const stripe = new Stripe(stripeKey);
 
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        line_items: [{
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: `${style} Portrait Commission — ${size}`,
-              description: `50% deposit for ${format} format${numExtra > 0 ? `, ${numExtra} extra subject${numExtra > 1 ? "s" : ""}` : ""}. Remaining balance due on completion.`,
-            },
-            unit_amount: Math.round(depositAmount * 100),
-          },
-          quantity: 1,
-        }],
-        customer_email: customerEmail,
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(depositAmount * 100),
+        currency: "usd",
+        description: `${style} Portrait Commission — ${size} (50% deposit)`,
+        receipt_email: customerEmail,
         metadata: {
           commissionType: "deposit",
           style, size, format,
@@ -2747,11 +2751,9 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
           totalPrice: String(totalPrice),
           depositAmount: String(depositAmount),
         },
-        success_url: `${baseUrl}/commission?deposited=true&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/commission?cancelled=true`,
       });
 
-      // Persist commission record
+      // Persist commission record with paymentIntentId
       const commission = await storage.createCommission({
         style, size, format,
         extraSubjects: numExtra,
@@ -2765,11 +2767,16 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         customerName,
         customerEmail,
         customerPhone: customerPhone || null,
-        stripeSessionId: session.id,
+        stripeSessionId: paymentIntent.id,
         status: "awaiting_deposit",
       });
 
-      res.json({ url: session.url, sessionId: session.id, commissionId: commission.id, requiresPayment: true });
+      res.json({
+        clientSecret: paymentIntent.client_secret,
+        commissionId: commission.id,
+        depositAmount,
+        requiresPayment: true,
+      });
     } catch (e: any) {
       console.error("Commission create error:", e?.message);
       res.status(500).json({ message: "Failed to create commission", error: e?.message });
