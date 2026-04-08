@@ -27,10 +27,10 @@ function generateToken(): string {
   return crypto.randomBytes(48).toString("hex");
 }
 
-export async function createSession(res: Response, userId: number): Promise<void> {
+export async function createSession(res: Response, userId: number, meta?: { userAgent?: string; ipAddress?: string }): Promise<void> {
   const token = generateToken();
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-  await storage.createSession(userId, token, expiresAt);
+  await storage.createSession(userId, token, expiresAt, meta);
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

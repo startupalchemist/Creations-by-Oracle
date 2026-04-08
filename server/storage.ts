@@ -1,8 +1,9 @@
 import {
-  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry, commissions, artworkWaitlist, printOrders, testimonials, exhibitions,
+  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry, commissions, artworkWaitlist, printOrders, testimonials, exhibitions, adminActivityLog,
   type Lead, type InsertLead,
   type User, type InsertUser,
   type Session,
+  type AdminActivityLog,
   type Post, type InsertPost,
   type Subscriber, type InsertSubscriber,
   type Newsletter, type InsertNewsletter,
@@ -43,10 +44,17 @@ export interface IStorage {
   updateUser(id: number, data: Partial<User>): Promise<User | undefined>;
   deleteUser(id: number): Promise<void>;
 
-  createSession(userId: number, token: string, expiresAt: Date): Promise<Session>;
+  createSession(userId: number, token: string, expiresAt: Date, meta?: { userAgent?: string; ipAddress?: string }): Promise<Session>;
   getSessionByToken(token: string): Promise<Session | undefined>;
+  getSessionsByUserId(userId: number): Promise<Session[]>;
+  getAllActiveSessions(): Promise<Session[]>;
   deleteSession(token: string): Promise<void>;
+  deleteSessionById(id: number): Promise<void>;
   deleteExpiredSessions(): Promise<void>;
+
+  createActivityLog(data: { actorId: number; actionType: string; entityType?: string; entityId?: string; summary: string }): Promise<AdminActivityLog>;
+  getActivityLogs(limit?: number, offset?: number): Promise<AdminActivityLog[]>;
+  getActivityLogCount(): Promise<number>;
 
   createPost(post: InsertPost & { authorId: number }): Promise<Post>;
   getPosts(status?: string): Promise<Post[]>;
@@ -276,19 +284,46 @@ export class DatabaseStorage implements IStorage {
     await db.delete(users).where(eq(users.id, id));
   }
 
-  async createSession(userId: number, token: string, expiresAt: Date): Promise<Session> {
-    const [result] = await db.insert(sessions).values({ userId, token, expiresAt }).returning();
+  async createSession(userId: number, token: string, expiresAt: Date, meta?: { userAgent?: string; ipAddress?: string }): Promise<Session> {
+    const [result] = await db.insert(sessions).values({ userId, token, expiresAt, userAgent: meta?.userAgent, ipAddress: meta?.ipAddress }).returning();
     return result;
   }
   async getSessionByToken(token: string): Promise<Session | undefined> {
     const [result] = await db.select().from(sessions).where(eq(sessions.token, token));
     return result;
   }
+  async getSessionsByUserId(userId: number): Promise<Session[]> {
+    return db.select().from(sessions).where(eq(sessions.userId, userId)).orderBy(desc(sessions.createdAt));
+  }
+  async getAllActiveSessions(): Promise<Session[]> {
+    return db.select().from(sessions).orderBy(desc(sessions.createdAt)).limit(100);
+  }
   async deleteSession(token: string): Promise<void> {
     await db.delete(sessions).where(eq(sessions.token, token));
   }
+  async deleteSessionById(id: number): Promise<void> {
+    await db.delete(sessions).where(eq(sessions.id, id));
+  }
   async deleteExpiredSessions(): Promise<void> {
     await db.delete(sessions).where(eq(sessions.expiresAt, new Date(0)));
+  }
+
+  async createActivityLog(data: { actorId: number; actionType: string; entityType?: string; entityId?: string; summary: string }): Promise<AdminActivityLog> {
+    const [result] = await db.insert(adminActivityLog).values({
+      actorId: data.actorId,
+      actionType: data.actionType,
+      entityType: data.entityType || null,
+      entityId: data.entityId || null,
+      summary: data.summary,
+    }).returning();
+    return result;
+  }
+  async getActivityLogs(limit = 50, offset = 0): Promise<AdminActivityLog[]> {
+    return db.select().from(adminActivityLog).orderBy(desc(adminActivityLog.createdAt)).limit(limit).offset(offset);
+  }
+  async getActivityLogCount(): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(adminActivityLog);
+    return result?.count ?? 0;
   }
 
   async createPost(post: InsertPost & { authorId: number }): Promise<Post> {

@@ -30,8 +30,9 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - Art categories: Abstract, Portrait, 3D Installation, Sculpture, Mixed Media
 
 ## Database Tables
-- `users` — session auth users (root/admin/editor)
-- `sessions` — auth sessions
+- `users` — session auth users (root/admin/editor); `lastLoginAt` updated on each login
+- `sessions` — auth sessions (token, expiresAt, userAgent, ipAddress)
+- `admin_activity_log` — audit trail for admin actions (actorId, actionType, entityType, entityId, summary)
 - `leads` — collector inquiries (subject, status: New Inquiry → Closed)
 - `artworks` — artwork catalog (title, slug, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, sold, status, category, featured, seoTitle, seoDescription, seoKeywords, viewCount, stripeProductId, stripePriceId, pageRegistryId, publishedAt, printsAvailable, printfulProductId, printMarkupPercent)
 - `commissions` — portrait commission orders (style, size, format, extraSubjects, basePrice, formatAddon, subjectFee, totalPrice, depositAmount, referenceImageUrls, notes, customerName/Email/Phone, stripeSessionId, stripePaymentIntentId, status, depositPaidAt, inProgressAt, readyAt, finalPaymentLinkId, finalPaymentLinkUrl, finalSentAt, finalPaymentPaidAt, completedAt, deliveryImageUrl)
@@ -91,7 +92,7 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - **Blog** — AI blog content generation
 - **Newsletter** — email newsletter
 - **Pages** — page registry (auto-populated on publish)
-- **Users** — user management (admin+)
+- **Users** — user management (admin+); shows lastLoginAt; Activity Log (paginated, filterable); Active Sessions panel (root only, with revoke)
 - **Integrations** — webhook + integration management + Printful connection status
 - **SEO** — SEO settings and blog services
 - **Blog Services** — controls AI blog topic research context

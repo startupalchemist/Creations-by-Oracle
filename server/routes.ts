@@ -157,7 +157,10 @@ export async function registerRoutes(
       if (!valid) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
-      await createSession(res, user.id);
+      const userAgent = req.headers["user-agent"] || undefined;
+      const ipAddress = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() || req.socket.remoteAddress || undefined;
+      await createSession(res, user.id, { userAgent, ipAddress });
+      await storage.updateUser(user.id, { lastLoginAt: new Date() });
       res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
     } catch {
       res.status(500).json({ message: "Login failed" });
@@ -179,7 +182,7 @@ export async function registerRoutes(
   app.get("/api/users", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
     try {
       const users = await storage.getUsers();
-      res.json(users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt })));
+      res.json(users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, lastLoginAt: u.lastLoginAt, createdAt: u.createdAt })));
     } catch {
       res.status(500).json({ message: "Failed to fetch users" });
     }
@@ -187,10 +190,17 @@ export async function registerRoutes(
 
   app.post("/api/users", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { name, email, password, role } = req.body;
-      if (!name || !email || !password) {
-        return res.status(400).json({ message: "Name, email, and password required" });
+      const createUserSchema = z.object({
+        name: z.string().min(1).max(100),
+        email: z.string().email(),
+        password: z.string().min(8).max(200),
+        role: z.enum(["root", "admin", "editor"]).optional().default("editor"),
+      });
+      const parsed = createUserSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       }
+      const { name, email, password, role } = parsed.data;
       if (role === "root" && req.user!.role !== "root") {
         return res.status(403).json({ message: "Only the webmaster can create root users" });
       }
@@ -199,7 +209,8 @@ export async function registerRoutes(
         return res.status(409).json({ message: "Email already in use" });
       }
       const passwordHash = await hashPassword(password);
-      const user = await storage.createUser({ name, email, role: role || "editor", passwordHash });
+      const user = await storage.createUser({ name, email, role, passwordHash });
+      await logAdminAction(req, "user_created", `Created user ${email} (${role})`, { entityType: "user", entityId: String(user.id) });
       res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role });
     } catch {
       res.status(500).json({ message: "Failed to create user" });
@@ -209,6 +220,15 @@ export async function registerRoutes(
   app.patch("/api/users/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id as string);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid user ID" });
+      const patchUserSchema = z.object({
+        name: z.string().min(1).max(100).optional(),
+        role: z.enum(["root", "admin", "editor"]).optional(),
+      }).refine(d => Object.keys(d).length > 0, { message: "No valid fields to update" });
+      const parsed = patchUserSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      }
       const target = await storage.getUserById(id);
       if (!target) {
         return res.status(404).json({ message: "User not found" });
@@ -216,17 +236,18 @@ export async function registerRoutes(
       if (target.role === "root" && req.user!.role !== "root") {
         return res.status(403).json({ message: "Cannot modify webmaster account" });
       }
-      if (req.body.role === "root" && req.user!.role !== "root") {
+      if (parsed.data.role === "root" && req.user!.role !== "root") {
         return res.status(403).json({ message: "Only the webmaster can assign root role" });
       }
       const updates: Record<string, any> = {};
-      if (req.body.role) updates.role = req.body.role;
-      if (req.body.name) updates.name = req.body.name;
+      if (parsed.data.role) updates.role = parsed.data.role;
+      if (parsed.data.name) updates.name = parsed.data.name;
 
       const user = await storage.updateUser(id, updates);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
+      await logAdminAction(req, "user_updated", `Updated user ${target.email}: ${Object.keys(updates).join(", ")}`, { entityType: "user", entityId: String(id) });
       res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
     } catch {
       res.status(500).json({ message: "Failed to update user" });
@@ -247,9 +268,93 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Cannot delete webmaster account" });
       }
       await storage.deleteUser(id);
+      await logAdminAction(req, "user_deleted", `Deleted user ${target.email} (${target.role})`, { entityType: "user", entityId: String(id) });
       res.json({ message: "User deleted" });
     } catch {
       res.status(500).json({ message: "Failed to delete user" });
+    }
+  });
+
+  // ─── Activity Log Helper ─────────────────────────────────────────
+  async function logAdminAction(req: any, actionType: string, summary: string, opts?: { entityType?: string; entityId?: string }) {
+    try {
+      if (!req.user) return;
+      await storage.createActivityLog({
+        actorId: req.user.id,
+        actionType,
+        entityType: opts?.entityType,
+        entityId: opts?.entityId,
+        summary,
+      });
+    } catch (e: any) {
+      console.error("Activity log error:", e?.message);
+    }
+  }
+
+  // ─── Activity Log Routes ─────────────────────────────────────────
+
+  app.get("/api/activity-log", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const page = Math.max(1, parseInt(String(req.query.page || "1")));
+      const limit = 25;
+      const offset = (page - 1) * limit;
+      const [logs, total] = await Promise.all([
+        storage.getActivityLogs(limit, offset),
+        storage.getActivityLogCount(),
+      ]);
+      const usersAll = await storage.getUsers();
+      const userMap = new Map(usersAll.map(u => [u.id, { name: u.name, email: u.email, role: u.role }]));
+      const enriched = logs.map(l => ({ ...l, actor: userMap.get(l.actorId) || null }));
+      res.json({ logs: enriched, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+    } catch {
+      res.status(500).json({ message: "Failed to fetch activity log" });
+    }
+  });
+
+  // ─── Session Management Routes ────────────────────────────────────
+
+  app.get("/api/sessions", authMiddleware, requireRole("root"), async (_req, res) => {
+    try {
+      const allSessions = await storage.getAllActiveSessions();
+      const usersAll = await storage.getUsers();
+      const userMap = new Map(usersAll.map(u => [u.id, { name: u.name, email: u.email, role: u.role }]));
+      const now = new Date();
+      const active = allSessions.filter(s => s.expiresAt > now).map(s => ({
+        id: s.id,
+        userId: s.userId,
+        user: userMap.get(s.userId) || null,
+        userAgent: s.userAgent,
+        ipAddress: s.ipAddress,
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+      }));
+      res.json(active);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch sessions" });
+    }
+  });
+
+  app.delete("/api/sessions/:id", authMiddleware, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid session ID" });
+
+      const allSessions = await storage.getAllActiveSessions();
+      const session = allSessions.find(s => s.id === id);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      const actorRole = req.user!.role;
+      const actorId = req.user!.id;
+
+      if (actorRole !== "root" && session.userId !== actorId) {
+        return res.status(403).json({ message: "Cannot revoke another user's session" });
+      }
+
+      await storage.deleteSessionById(id);
+      await logAdminAction(req, "session_revoked", `Revoked session #${id}`, { entityType: "session", entityId: String(id) });
+      res.json({ message: "Session revoked" });
+    } catch {
+      res.status(500).json({ message: "Failed to revoke session" });
     }
   });
 
@@ -2604,11 +2709,26 @@ Generate only the requested fields. Respond in this exact JSON format:
   app.post("/api/upload", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
       const { imageData, filename } = req.body;
-      if (!imageData) return res.status(400).json({ message: "imageData is required" });
-      const base64Data = imageData.replace(/^data:image\/[\w+]+;base64,/, "");
+      if (!imageData || typeof imageData !== "string") {
+        return res.status(400).json({ message: "imageData is required" });
+      }
+      const mimeMatch = imageData.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+      if (!mimeMatch) {
+        return res.status(400).json({ message: "Only image files are allowed" });
+      }
+      const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
+      if (!allowedMimes.includes(mimeMatch[1].toLowerCase())) {
+        return res.status(400).json({ message: "Unsupported image type. Use JPG, PNG, WEBP, or GIF." });
+      }
+      const base64Data = imageData.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+      const sizeBytes = Math.ceil(base64Data.length * 0.75);
+      const MAX_BYTES = 10 * 1024 * 1024;
+      if (sizeBytes > MAX_BYTES) {
+        return res.status(400).json({ message: "Image must be smaller than 10 MB" });
+      }
       const buffer = Buffer.from(base64Data, "base64");
-      const ext = imageData.match(/data:image\/([\w+]+);/)?.[1] || "jpg";
-      const safeName = (filename || `upload-${Date.now()}`).replace(/[^a-zA-Z0-9-_]/g, "-") + "." + ext;
+      const ext = mimeMatch[1].split("/")[1].replace("+", "");
+      const safeName = `${(filename || `upload-${Date.now()}`).replace(/[^a-zA-Z0-9-_]/g, "-")}.${ext}`;
       const uploadDir = path.resolve(process.cwd(), "uploads");
       if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
       fs.writeFileSync(path.join(uploadDir, safeName), buffer);
@@ -3491,6 +3611,9 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       if (deliveryImageUrl !== undefined) updateData.deliveryImageUrl = deliveryImageUrl ?? null;
       const updated = await storage.updateCommission(id, updateData);
       if (!updated) return res.status(404).json({ message: "Commission not found" });
+      if (status) {
+        await logAdminAction(req, "commission_status_changed", `Commission #${id} status → ${status}`, { entityType: "commission", entityId: String(id) });
+      }
       res.json(updated);
     } catch {
       res.status(500).json({ message: "Failed to update commission" });
@@ -3583,6 +3706,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       }
 
       const updated = await storage.getCommissionById(id);
+      await logAdminAction(req, "commission_final_payment_sent", `Final payment link sent for commission #${id} (${commission.customerName})`, { entityType: "commission", entityId: String(id) });
       res.json({ commission: updated, paymentLinkUrl: paymentLink.url });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

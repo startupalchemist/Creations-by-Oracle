@@ -44,6 +44,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("editor"),
+  lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -63,10 +64,24 @@ export const sessions = pgTable("sessions", {
   userId: integer("user_id").notNull().references(() => users.id),
   token: text("token").notNull().unique(),
   expiresAt: timestamp("expires_at").notNull(),
+  userAgent: text("user_agent"),
+  ipAddress: text("ip_address"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export type Session = typeof sessions.$inferSelect;
+
+export const adminActivityLog = pgTable("admin_activity_log", {
+  id: serial("id").primaryKey(),
+  actorId: integer("actor_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  actionType: text("action_type").notNull(),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  summary: text("summary").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type AdminActivityLog = typeof adminActivityLog.$inferSelect;
 
 export const topics = pgTable("topics", {
   id: serial("id").primaryKey(),

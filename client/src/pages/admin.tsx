@@ -69,6 +69,9 @@ import {
   AlertCircle,
   RefreshCw,
   Package,
+  Monitor,
+  Activity,
+  ShieldX,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import TheDyno from "@/components/the-dyno";
@@ -1785,8 +1788,38 @@ function UsersTab({
   currentUserRole: string;
 }) {
   const isRoot = currentUserRole === "root";
-  const { data: users = [], isLoading } = useQuery<{ id: number; name: string; email: string; role: string; createdAt: string }[]>({
+  const [logPage, setLogPage] = useState(1);
+
+  const { data: users = [], isLoading } = useQuery<{ id: number; name: string; email: string; role: string; lastLoginAt: string | null; createdAt: string }[]>({
     queryKey: ["/api/users"],
+  });
+
+  const { data: activityData, isLoading: logLoading } = useQuery<{
+    logs: { id: number; actorId: number; actionType: string; entityType: string | null; entityId: string | null; summary: string; createdAt: string; actor: { name: string; email: string; role: string } | null }[];
+    total: number;
+    page: number;
+    pages: number;
+  }>({
+    queryKey: ["/api/activity-log", logPage],
+    queryFn: async () => {
+      const res = await fetch(`/api/activity-log?page=${logPage}`, { credentials: "include" });
+      if (!res.ok) return { logs: [], total: 0, page: 1, pages: 1 };
+      return res.json();
+    },
+  });
+
+  const { data: activeSessions = [], isLoading: sessionsLoading } = useQuery<{
+    id: number; userId: number; user: { name: string; email: string; role: string } | null;
+    userAgent: string | null; ipAddress: string | null; createdAt: string; expiresAt: string;
+  }[]>({
+    queryKey: ["/api/sessions"],
+    queryFn: async () => {
+      if (!isRoot) return [];
+      const res = await fetch("/api/sessions", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isRoot,
   });
 
   const createUser = useMutation({
@@ -1817,6 +1850,20 @@ function UsersTab({
     },
   });
 
+  const revokeSession = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/sessions/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/activity-log"] });
+      toast({ title: "Session revoked" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -1826,101 +1873,185 @@ function UsersTab({
   }
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <Button
-          onClick={() => setShowAddUser(!showAddUser)}
-          className="bg-[#5D3FD3] text-white"
-          data-testid="button-add-user"
-        >
-          <Plus className="w-4 h-4 mr-2" /> Add User
-        </Button>
+    <div className="space-y-8">
+      {/* ── User List ── */}
+      <div>
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+          <Button
+            onClick={() => setShowAddUser(!showAddUser)}
+            className="bg-[#5D3FD3] text-white"
+            data-testid="button-add-user"
+          >
+            <Plus className="w-4 h-4 mr-2" /> Add User
+          </Button>
+        </div>
+
+        {showAddUser && (
+          <div className="p-6 rounded-md bg-[#141416] border border-white/5 mb-6 space-y-4" data-testid="form-add-user">
+            <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 mb-2">New User</p>
+            <Input
+              placeholder="Name"
+              value={userForm.name}
+              onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+              className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7]"
+              data-testid="input-user-name"
+            />
+            <Input
+              placeholder="Email"
+              type="email"
+              value={userForm.email}
+              onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+              className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7]"
+              data-testid="input-user-email"
+            />
+            <Input
+              placeholder="Password"
+              type="password"
+              value={userForm.password}
+              onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+              className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7]"
+              data-testid="input-user-password"
+            />
+            <Select value={userForm.role} onValueChange={(role) => setUserForm({ ...userForm, role })}>
+              <SelectTrigger className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7]" data-testid="select-user-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-[#141416] border-white/10">
+                {isRoot && <SelectItem value="root" className="text-[#F5F5F7]">Root</SelectItem>}
+                <SelectItem value="admin" className="text-[#F5F5F7]">Admin</SelectItem>
+                <SelectItem value="editor" className="text-[#F5F5F7]">Editor</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                onClick={() => {
+                  if (!userForm.name.trim() || !userForm.email.trim() || !userForm.password.trim()) return;
+                  createUser.mutate(userForm);
+                }}
+                disabled={createUser.isPending || !userForm.name.trim() || !userForm.email.trim() || !userForm.password.trim()}
+                className="bg-[#5D3FD3] text-white"
+                data-testid="button-user-submit"
+              >
+                {createUser.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                Create User
+              </Button>
+              <Button variant="ghost" className="text-[#B3B3B8]" onClick={() => setShowAddUser(false)} data-testid="button-user-cancel">
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {users.map((u) => (
+            <div
+              key={u.id}
+              className="p-5 rounded-md bg-[#141416] border border-white/5 flex flex-wrap items-center justify-between gap-4"
+              data-testid={`card-user-${u.id}`}
+            >
+              <div className="flex flex-wrap items-center gap-4 min-w-0">
+                <span className="text-[#F5F5F7] font-semibold text-sm">{u.name}</span>
+                <span className="text-[#B3B3B8] text-sm">{u.email}</span>
+                <Badge className="bg-[#5D3FD3]/20 text-[#5D3FD3] border-0 no-default-hover-elevate no-default-active-elevate text-xs">
+                  {u.role}
+                </Badge>
+                {u.lastLoginAt && (
+                  <span className="text-[#B3B3B8]/40 text-xs" data-testid={`text-last-login-${u.id}`}>
+                    Last login: {new Date(u.lastLoginAt).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              {u.id !== currentUserId && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => deleteUser.mutate(u.id)}
+                  data-testid={`button-delete-user-${u.id}`}
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                </Button>
+              )}
+            </div>
+          ))}
+          {users.length === 0 && (
+            <p className="text-center py-8 text-[#B3B3B8]/50 text-sm" data-testid="text-no-users">No users found.</p>
+          )}
+        </div>
       </div>
 
-      {showAddUser && (
-        <div className="p-6 rounded-md bg-[#141416] border border-white/5 mb-6 space-y-4" data-testid="form-add-user">
-          <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 mb-2">New User</p>
-          <Input
-            placeholder="Name"
-            value={userForm.name}
-            onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7]"
-            data-testid="input-user-name"
-          />
-          <Input
-            placeholder="Email"
-            type="email"
-            value={userForm.email}
-            onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7]"
-            data-testid="input-user-email"
-          />
-          <Input
-            placeholder="Password"
-            type="password"
-            value={userForm.password}
-            onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7]"
-            data-testid="input-user-password"
-          />
-          <Select value={userForm.role} onValueChange={(role) => setUserForm({ ...userForm, role })}>
-            <SelectTrigger className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7]" data-testid="select-user-role">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-[#141416] border-white/10">
-              {isRoot && <SelectItem value="root" className="text-[#F5F5F7]">Root</SelectItem>}
-              <SelectItem value="admin" className="text-[#F5F5F7]">Admin</SelectItem>
-              <SelectItem value="editor" className="text-[#F5F5F7]">Editor</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="flex flex-wrap gap-3">
-            <Button
-              onClick={() => {
-                if (!userForm.name.trim() || !userForm.email.trim() || !userForm.password.trim()) return;
-                createUser.mutate(userForm);
-              }}
-              disabled={createUser.isPending || !userForm.name.trim() || !userForm.email.trim() || !userForm.password.trim()}
-              className="bg-[#5D3FD3] text-white"
-              data-testid="button-user-submit"
-            >
-              {createUser.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              Create User
-            </Button>
-            <Button variant="ghost" className="text-[#B3B3B8]" onClick={() => setShowAddUser(false)} data-testid="button-user-cancel">
-              Cancel
-            </Button>
+      {/* ── Active Sessions (root only) ── */}
+      {isRoot && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Monitor className="w-4 h-4 text-[#B3B3B8]/50" />
+            <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 font-medium">Active Sessions</p>
           </div>
+          {sessionsLoading ? (
+            <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 text-[#5D3FD3] animate-spin" /></div>
+          ) : activeSessions.length === 0 ? (
+            <p className="text-sm text-[#B3B3B8]/40 py-4" data-testid="text-no-sessions">No active sessions.</p>
+          ) : (
+            <div className="space-y-2" data-testid="panel-active-sessions">
+              {activeSessions.map((s) => (
+                <div key={s.id} className="p-4 rounded-md bg-[#141416] border border-white/5 flex flex-wrap items-start justify-between gap-3" data-testid={`card-session-${s.id}`}>
+                  <div className="min-w-0">
+                    <p className="text-[#F5F5F7] text-sm font-medium">{s.user?.name || "Unknown"} <span className="text-[#B3B3B8]/40 font-normal">({s.user?.role})</span></p>
+                    <p className="text-[#B3B3B8]/50 text-xs truncate max-w-xs" data-testid={`text-session-ua-${s.id}`}>{s.userAgent ? s.userAgent.substring(0, 80) : "Unknown browser"}</p>
+                    {s.ipAddress && <p className="text-[#B3B3B8]/30 text-[10px]">IP: {s.ipAddress}</p>}
+                    <p className="text-[#B3B3B8]/30 text-[10px]">Created: {new Date(s.createdAt).toLocaleString()} · Expires: {new Date(s.expiresAt).toLocaleDateString()}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => revokeSession.mutate(s.id)}
+                    disabled={revokeSession.isPending}
+                    className="shrink-0"
+                    data-testid={`button-revoke-session-${s.id}`}
+                  >
+                    <ShieldX className="w-4 h-4 text-red-400" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      <div className="space-y-3">
-        {users.map((u) => (
-          <div
-            key={u.id}
-            className="p-5 rounded-md bg-[#141416] border border-white/5 flex flex-wrap items-center justify-between gap-4"
-            data-testid={`card-user-${u.id}`}
-          >
-            <div className="flex flex-wrap items-center gap-4">
-              <span className="text-[#F5F5F7] font-semibold text-sm">{u.name}</span>
-              <span className="text-[#B3B3B8] text-sm">{u.email}</span>
-              <Badge className="bg-[#5D3FD3]/20 text-[#5D3FD3] border-0 no-default-hover-elevate no-default-active-elevate text-xs">
-                {u.role}
-              </Badge>
-            </div>
-            {u.id !== currentUserId && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => deleteUser.mutate(u.id)}
-                data-testid={`button-delete-user-${u.id}`}
-              >
-                <Trash2 className="w-4 h-4 text-red-400" />
-              </Button>
+      {/* ── Activity Log ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <Activity className="w-4 h-4 text-[#B3B3B8]/50" />
+          <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 font-medium">Activity Log</p>
+          {activityData && <span className="text-[10px] text-[#B3B3B8]/30 ml-auto">{activityData.total} events</span>}
+        </div>
+        {logLoading ? (
+          <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 text-[#5D3FD3] animate-spin" /></div>
+        ) : !activityData?.logs.length ? (
+          <p className="text-sm text-[#B3B3B8]/40 py-4" data-testid="text-no-activity">No activity recorded yet.</p>
+        ) : (
+          <div className="space-y-1" data-testid="panel-activity-log">
+            {activityData.logs.map((log) => (
+              <div key={log.id} className="p-3 rounded-md bg-[#141416] border border-white/5 flex flex-wrap items-start justify-between gap-2" data-testid={`row-activity-${log.id}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[#F5F5F7] text-xs">{log.summary}</p>
+                  <p className="text-[#B3B3B8]/40 text-[10px] mt-0.5">
+                    {log.actor?.name || "Unknown"} · {log.actionType.replace(/_/g, " ")}
+                    {log.entityType && ` · ${log.entityType}${log.entityId ? ` #${log.entityId}` : ""}`}
+                  </p>
+                </div>
+                <span className="text-[#B3B3B8]/30 text-[10px] shrink-0">{new Date(log.createdAt).toLocaleString()}</span>
+              </div>
+            ))}
+            {(activityData?.pages || 1) > 1 && (
+              <div className="flex items-center justify-between pt-2 px-1">
+                <span className="text-[10px] text-[#B3B3B8]/30">Page {logPage}/{activityData?.pages}</span>
+                <div className="flex gap-1">
+                  <button onClick={() => setLogPage(p => Math.max(1, p - 1))} disabled={logPage === 1} className="px-2 py-0.5 text-[10px] text-[#B3B3B8]/50 hover:text-[#C084FC] disabled:opacity-30 transition-colors" data-testid="button-activity-prev">← Prev</button>
+                  <button onClick={() => setLogPage(p => Math.min(activityData?.pages || 1, p + 1))} disabled={logPage >= (activityData?.pages || 1)} className="px-2 py-0.5 text-[10px] text-[#B3B3B8]/50 hover:text-[#C084FC] disabled:opacity-30 transition-colors" data-testid="button-activity-next">Next →</button>
+                </div>
+              </div>
             )}
           </div>
-        ))}
-        {users.length === 0 && (
-          <p className="text-center py-8 text-[#B3B3B8]/50 text-sm" data-testid="text-no-users">No users found.</p>
         )}
       </div>
     </div>
