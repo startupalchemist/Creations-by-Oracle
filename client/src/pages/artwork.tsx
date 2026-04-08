@@ -41,6 +41,7 @@ export default function ArtworkPage() {
   const [showBuyForm, setShowBuyForm] = useState(false);
   const [purchased, setPurchased] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxZoomed, setLightboxZoomed] = useState(false);
 
   const { data: artwork, isLoading } = useQuery<Artwork>({
     queryKey: ["/api/artworks", slug],
@@ -100,7 +101,7 @@ export default function ArtworkPage() {
     };
   }, [artwork]);
 
-  const closeLightbox = useCallback(() => setLightboxOpen(false), []);
+  const closeLightbox = useCallback(() => { setLightboxOpen(false); setLightboxZoomed(false); }, []);
 
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -264,7 +265,7 @@ export default function ArtworkPage() {
                     <p className="text-[9px] uppercase tracking-[0.2em] text-[#B3B3B8]/30 mb-0.5">Views</p>
                     <p className="text-[#B3B3B8]/70 text-sm flex items-center gap-1.5">
                       <Eye className="w-3.5 h-3.5" />
-                      {artwork.viewCount.toLocaleString()}
+                      {artwork.viewCount.toLocaleString()} views
                     </p>
                   </div>
                 )}
@@ -386,7 +387,7 @@ export default function ArtworkPage() {
                       <div className="flex gap-2 pt-1">
                         <Button
                           className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-auto py-2.5 flex-1"
-                          disabled={!buyerName.trim() || !buyerEmail.trim() || checkoutMutation.isPending}
+                          disabled={!buyerName.trim() || !buyerEmail.trim() || !shippingStreet.trim() || !shippingCity.trim() || !shippingZip.trim() || checkoutMutation.isPending}
                           onClick={() => checkoutMutation.mutate()}
                           data-testid="button-proceed-checkout"
                         >
@@ -407,8 +408,8 @@ export default function ArtworkPage() {
               ) : artwork.sold ? (
                 <div className="border border-white/8 rounded-sm p-4 text-center" data-testid="div-sold-section">
                   <p className="text-[#B3B3B8]/40 text-sm mb-3">This work has found its home.</p>
-                  <Link href="/contact?utm_source=artwork&utm_medium=sold&utm_campaign=commission">
-                    <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em]">
+                  <Link href={`/contact?type=commission&subject=${encodeURIComponent(`Commission similar to "${artwork.title}"`)}&utm_source=artwork&utm_medium=sold&utm_campaign=commission`}>
+                    <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em]" data-testid="button-commission-similar">
                       Commission a Similar Piece
                     </Button>
                   </Link>
@@ -458,15 +459,20 @@ export default function ArtworkPage() {
           >
             <X className="w-5 h-5" />
           </button>
-          <img
-            src={artwork.enhancedImageUrl || artwork.imageUrl}
-            alt={artwork.title}
-            className="max-w-[90vw] max-h-[90vh] object-contain rounded-sm shadow-2xl"
+          <div
+            className={`transition-all duration-300 ${lightboxZoomed ? "overflow-auto max-w-none max-h-none" : "max-w-[90vw] max-h-[90vh]"}`}
             onClick={(e) => e.stopPropagation()}
-            data-testid="img-lightbox"
-          />
+          >
+            <img
+              src={artwork.enhancedImageUrl || artwork.imageUrl}
+              alt={artwork.title}
+              className={`rounded-sm shadow-2xl object-contain transition-all duration-300 select-none ${lightboxZoomed ? "w-[180vw] max-w-none cursor-zoom-out" : "max-w-[90vw] max-h-[90vh] cursor-zoom-in"}`}
+              onClick={() => setLightboxZoomed((z) => !z)}
+              data-testid="img-lightbox"
+            />
+          </div>
           <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/40 text-[10px] uppercase tracking-[0.2em]">
-            Press Esc or click outside to close
+            {lightboxZoomed ? "Click to zoom out · Esc to close" : "Click to zoom · Esc to close"}
           </p>
         </div>
       )}

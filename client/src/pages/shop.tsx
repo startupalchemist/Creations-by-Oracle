@@ -33,7 +33,7 @@ function ArtworkCard({ artwork }: { artwork: Artwork }) {
             <img
               src={artwork.enhancedImageUrl || artwork.imageUrl}
               alt={artwork.title}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+              className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 ${artwork.sold ? "saturate-0 opacity-60" : ""}`}
               loading="lazy"
             />
           ) : (
@@ -73,7 +73,7 @@ function ArtworkCard({ artwork }: { artwork: Artwork }) {
             {artwork.viewCount > 0 && (
               <div className="flex items-center gap-1 text-[#B3B3B8]/30" data-testid={`text-view-count-${artwork.id}`}>
                 <Eye className="w-3 h-3" />
-                <span className="text-[10px]">{artwork.viewCount.toLocaleString()}</span>
+                <span className="text-[10px]">{artwork.viewCount.toLocaleString()} views</span>
               </div>
             )}
           </div>
