@@ -281,8 +281,8 @@ export default function Commission() {
       };
       reader.onload = async (e) => {
         try {
-          const base64 = (e.target?.result as string).split(",")[1];
-          const res = await apiRequest("POST", "/api/upload", { imageData: base64, filename: file.name });
+          const imageData = e.target?.result as string;
+          const res = await apiRequest("POST", "/api/commission/upload", { imageData, filename: file.name });
           const data = await res.json();
           setReferenceImages((prev) => [...prev, { url: data.url, name: file.name }]);
         } catch {

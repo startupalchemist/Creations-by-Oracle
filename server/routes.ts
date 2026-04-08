@@ -2534,8 +2534,12 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
       if (webhookSecret) {
         const sig = req.headers["stripe-signature"];
+        const rawBody = (req as any).rawBody;
+        if (!rawBody) {
+          return res.status(400).json({ message: "No raw body for webhook verification" });
+        }
         try {
-          event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+          event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
         } catch {
           return res.status(400).json({ message: "Webhook signature invalid" });
         }
@@ -2621,6 +2625,46 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
   app.get("/api/stripe/public-key", async (_req, res) => {
     const pk = process.env.STRIPE_PUBLISHABLE_KEY || "";
     res.json({ publishableKey: pk });
+  });
+
+  // ─── Public Commission Reference Photo Upload ────────────────────
+  // No auth required — strict validation: images only, max 5 MB
+
+  app.post("/api/commission/upload", async (req, res) => {
+    try {
+      const { imageData, filename } = req.body;
+      if (!imageData || typeof imageData !== "string") {
+        return res.status(400).json({ message: "imageData is required" });
+      }
+
+      // Allow only image/* MIME types
+      const mimeMatch = imageData.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+      if (!mimeMatch) {
+        return res.status(400).json({ message: "Only image files are allowed" });
+      }
+      const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
+      if (!allowedMimes.includes(mimeMatch[1].toLowerCase())) {
+        return res.status(400).json({ message: "Unsupported image type. Use JPG, PNG, or WEBP." });
+      }
+
+      // Check file size (base64 → ~75% of raw; 5 MB raw limit = ~6.67 MB base64)
+      const base64Data = imageData.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+      const sizeBytes = Math.ceil(base64Data.length * 0.75);
+      const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+      if (sizeBytes > MAX_BYTES) {
+        return res.status(400).json({ message: "Image must be smaller than 5 MB" });
+      }
+
+      const buffer = Buffer.from(base64Data, "base64");
+      const ext = mimeMatch[1].split("/")[1].replace("+", "");
+      const safeName = `ref-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const uploadDir = path.join(process.cwd(), "client", "public", "uploads");
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      fs.writeFileSync(path.join(uploadDir, safeName), buffer);
+      res.json({ url: `/uploads/${safeName}` });
+    } catch (e: any) {
+      res.status(500).json({ message: "Upload failed", error: e?.message });
+    }
   });
 
   // ─── Commission Pricing ──────────────────────────────────────────
