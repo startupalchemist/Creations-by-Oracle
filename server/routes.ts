@@ -256,9 +256,8 @@ export async function registerRoutes(
               name: lead.name,
               email: lead.email,
               phone: lead.phone || undefined,
-              subject: lead.vehicle || undefined,
+              subject: lead.subject || undefined,
               message: lead.message || undefined,
-              inquiryType: lead.insurance || undefined,
             }),
           });
         }
@@ -2661,7 +2660,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
           // Send purchase receipt + artist sale notification
           try {
-            const artwork = await storage.getArtwork(artworkId);
+            const artwork = await storage.getArtworkById(artworkId);
             const buyerName = session.customer_details?.name || "Collector";
             const buyerEmail = session.customer_details?.email || "";
             const amount = ((session.amount_total || 0) / 100).toFixed(2);
@@ -3110,21 +3109,20 @@ function buildSaleNotificationEmail({ buyerName, buyerEmail, artworkTitle, artwo
   `;
 }
 
-function buildInquiryEmail({ name, email, phone, subject, message, inquiryType }: { name: string; email: string; phone?: string; subject?: string; message?: string; inquiryType?: string }) {
+function buildInquiryEmail({ name, email, phone, subject, message }: { name: string; email: string; phone?: string; subject?: string; message?: string }) {
   return `
     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
-      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">New Inquiry</p>
-      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 24px 0; font-family: Georgia, serif;">${subject || inquiryType || "General Inquiry"}</h2>
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 24px 0; font-family: Georgia, serif;">${subject || "General Inquiry"}</h2>
       <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
         <table style="width: 100%; border-collapse: collapse;">
           <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Name</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${name}</td></tr>
           <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Email</td><td style="font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;"><a href="mailto:${email}" style="color: #C084FC;">${email}</a></td></tr>
           ${phone ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Phone</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${phone}</td></tr>` : ""}
-          ${inquiryType ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Type</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${inquiryType}</td></tr>` : ""}
         </table>
       </div>
       ${message ? `<div style="background: rgba(255,255,255,0.02); border-left: 2px solid #C084FC; padding: 16px; border-radius: 0 4px 4px 0; margin-bottom: 24px;"><p style="color: #B3B3B8; font-size: 13px; line-height: 1.7; margin: 0;">${message.replace(/\n/g, "<br>")}</p></div>` : ""}
-      <p style="color: #B3B3B8; font-size: 12px;">Reply directly to this email to reach ${name}.</p>
+      <p style="color: #B3B3B8; font-size: 12px;">Reply directly to this email to reach ${name}. <a href="https://creationsByOracle.com" style="color: #C084FC;">Creations by Oracle</a></p>
     </div>
   `;
 }
