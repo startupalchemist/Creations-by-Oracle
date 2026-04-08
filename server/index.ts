@@ -356,6 +356,7 @@ async function seedStaticPageRegistry(): Promise<void> {
       { slug: "about", title: "About", pageType: "static" as const, seoTitle: "About — Creations by Oracle", seoDescription: "Learn about the artist behind Creations by Oracle — process, inspiration, and vision.", seoKeywords: ["about Creations by Oracle", "artist biography"] },
       { slug: "blog", title: "Blog", pageType: "blog" as const, seoTitle: "Blog — Creations by Oracle", seoDescription: "Art insights, process notes, and creative reflections from Creations by Oracle.", seoKeywords: ["art blog", "creative process", "studio notes"] },
       { slug: "contact", title: "Contact", pageType: "static" as const, seoTitle: "Contact & Commissions — Creations by Oracle", seoDescription: "Commission a piece or inquire about available works. Reach out to Creations by Oracle.", seoKeywords: ["art commissions", "contact artist"] },
+      { slug: "commission", title: "Commission", pageType: "static" as const, seoTitle: "Commission a Piece — Creations by Oracle", seoDescription: "Commission an original portrait or abstract work. Choose your style, size, and format. 50% deposit secures your commission.", seoKeywords: ["portrait commission", "custom art", "art commission", "abstract portrait"] },
     ];
 
     for (const p of STATIC_PAGES) {

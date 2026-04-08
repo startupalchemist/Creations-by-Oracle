@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertLeadSchema, insertWebhookSchema, leadStatuses, webhookEvents, insertArtworkSchema, artworkCategories, artworkStatuses } from "@shared/schema";
+import { insertLeadSchema, insertWebhookSchema, leadStatuses, webhookEvents, insertArtworkSchema, artworkCategories, artworkStatuses, type Commission } from "@shared/schema";
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
@@ -2800,7 +2800,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 }
 
 // Email template helpers
-function buildCollectorEmail({ commission, totalPrice, depositAmount, baseUrl }: { commission: any; totalPrice: number; depositAmount: number; baseUrl: string }) {
+function buildCollectorEmail({ commission, totalPrice, depositAmount, baseUrl }: { commission: Commission; totalPrice: number; depositAmount: number; baseUrl: string }) {
   return `
     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
       <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
@@ -2821,7 +2821,7 @@ function buildCollectorEmail({ commission, totalPrice, depositAmount, baseUrl }:
   `;
 }
 
-function buildArtistEmail({ commission, totalPrice, depositAmount }: { commission: any; totalPrice: number; depositAmount: number }) {
+function buildArtistEmail({ commission, totalPrice, depositAmount }: { commission: Commission; totalPrice: number; depositAmount: number }) {
   return `
     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
       <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">New Commission</p>

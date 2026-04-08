@@ -207,7 +207,7 @@ export default function Commission() {
         setLocation("/");
       }
     },
-    onError: (e: any) => {
+    onError: (e: Error) => {
       toast({
         title: "Submission failed",
         description: e?.message || "Please try again.",
@@ -303,7 +303,12 @@ export default function Commission() {
 
   return (
     <div className="min-h-screen bg-[#08060e] text-white">
-      <div className="max-w-2xl mx-auto px-4 py-16">
+      <div className="max-w-6xl mx-auto px-4 py-16">
+        {/* Two-column layout on desktop */}
+        <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-12 lg:items-start">
+
+        {/* Left: Main wizard content */}
+        <div>
         {/* Header */}
         <div className="mb-10">
           <p className="text-[#C084FC] text-xs uppercase tracking-[4px] mb-3">
@@ -323,9 +328,11 @@ export default function Commission() {
 
         <StepDots current={step} total={STEP_LABELS.length} />
 
-        {/* Price display when available */}
+        {/* Mobile price display (shown below step dots on mobile) */}
         {total > 0 && step > 0 && (
-          <PriceDisplay total={total} deposit={deposit} />
+          <div className="lg:hidden">
+            <PriceDisplay total={total} deposit={deposit} />
+          </div>
         )}
 
         {/* Step Content */}
@@ -784,7 +791,7 @@ export default function Commission() {
         </div>
 
         {/* Trust signals */}
-        <div className="mt-12 pt-8 border-t border-white/5 flex flex-wrap gap-6 justify-center">
+        <div className="mt-12 pt-8 border-t border-white/5 flex flex-wrap gap-6 justify-center lg:justify-start">
           {[
             "50% deposit to begin",
             "Balance due on completion",
@@ -797,6 +804,123 @@ export default function Commission() {
             </div>
           ))}
         </div>
+        </div>{/* end left column */}
+
+        {/* Right: Sticky price summary (desktop only) */}
+        <div className="hidden lg:block">
+          <div
+            data-testid="div-sticky-price-summary"
+            className="sticky top-8 rounded-xl border border-white/10 bg-white/[0.02] p-6"
+          >
+            <p className="text-xs text-white/40 uppercase tracking-widest mb-5">
+              Your Commission
+            </p>
+
+            {/* Selections so far */}
+            <div className="space-y-3 mb-6">
+              {style ? (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-white/50">Style</span>
+                  <span className="text-xs text-white font-medium">{style}</span>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-white/30">Style</span>
+                  <span className="text-xs text-white/20">—</span>
+                </div>
+              )}
+              {size ? (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-white/50">Size</span>
+                  <span className="text-xs text-white font-medium">{size}</span>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-white/30">Size</span>
+                  <span className="text-xs text-white/20">—</span>
+                </div>
+              )}
+              {step >= 2 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-white/50">Format</span>
+                  <span className="text-xs text-white font-medium">{format}</span>
+                </div>
+              )}
+              {step >= 3 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-white/50">Subjects</span>
+                  <span className="text-xs text-white font-medium">{1 + extraSubjects}</span>
+                </div>
+              )}
+            </div>
+
+            {total > 0 ? (
+              <>
+                <div className="border-t border-white/10 pt-4 space-y-2">
+                  {calcPrice().base > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/40">Base</span>
+                      <span className="text-white/70">${calcPrice().base.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {calcPrice().addon > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/40">{format}</span>
+                      <span className="text-white/70">+${calcPrice().addon.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {calcPrice().subjFee > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/40">Extra subjects</span>
+                      <span className="text-white/70">+${calcPrice().subjFee.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-white/10 mt-3 pt-4">
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <p className="text-xs text-white/40 mb-0.5">Total</p>
+                      <p
+                        data-testid="text-sticky-total"
+                        className="text-2xl font-light text-white"
+                        style={{ fontFamily: "Georgia, serif" }}
+                      >
+                        ${total.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 p-3 rounded-lg bg-[#C084FC]/10 border border-[#C084FC]/20">
+                    <p className="text-xs text-white/40 mb-0.5">Deposit due now (50%)</p>
+                    <p
+                      data-testid="text-sticky-deposit"
+                      className="text-xl font-light text-[#C084FC]"
+                    >
+                      ${deposit.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="border-t border-white/10 pt-4">
+                <p className="text-xs text-white/20 text-center">
+                  Select a style and size to see pricing
+                </p>
+              </div>
+            )}
+
+            {/* Mini trust signals */}
+            <div className="mt-5 space-y-2">
+              {["Secure Stripe checkout", "Balance due on completion", "2–4 week turnaround"].map((item) => (
+                <div key={item} className="flex items-center gap-2">
+                  <Check size={10} className="text-[#C084FC] flex-shrink-0" />
+                  <span className="text-xs text-white/30">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        </div>{/* end grid */}
       </div>
     </div>
   );
