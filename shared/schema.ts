@@ -473,6 +473,7 @@ export const commissions = pgTable("commissions", {
   finalSentAt: timestamp("final_sent_at"),
   finalPaymentPaidAt: timestamp("final_payment_paid_at"),
   completedAt: timestamp("completed_at"),
+  deliveryImageUrl: text("delivery_image_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

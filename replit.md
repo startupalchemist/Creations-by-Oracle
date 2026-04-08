@@ -34,7 +34,7 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - `sessions` — auth sessions
 - `leads` — collector inquiries (subject, status: New Inquiry → Closed)
 - `artworks` — artwork catalog (title, slug, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, sold, status, category, featured, seoTitle, seoDescription, seoKeywords, viewCount, stripeProductId, stripePriceId, pageRegistryId, publishedAt, printsAvailable, printfulProductId, printMarkupPercent)
-- `commissions` — portrait commission orders (style, size, format, extraSubjects, basePrice, formatAddon, subjectFee, totalPrice, depositAmount, referenceImageUrls, notes, customerName/Email/Phone, stripeSessionId, stripePaymentIntentId, status, depositPaidAt, finalPaymentLinkId, finalPaymentLinkUrl, finalPaymentPaidAt, completedAt)
+- `commissions` — portrait commission orders (style, size, format, extraSubjects, basePrice, formatAddon, subjectFee, totalPrice, depositAmount, referenceImageUrls, notes, customerName/Email/Phone, stripeSessionId, stripePaymentIntentId, status, depositPaidAt, inProgressAt, readyAt, finalPaymentLinkId, finalPaymentLinkUrl, finalSentAt, finalPaymentPaidAt, completedAt, deliveryImageUrl)
 - `orders` — artwork purchases (artworkId, buyerName, buyerEmail, amount, status, stripeSessionId, stripePaymentIntentId, shippingAddress)
 - `print_orders` — Printful print-on-demand orders (artworkId, buyerName, buyerEmail, printfulProductId, variantId, variantLabel, retailPrice, printfulOrderId, status, shippingAddress, stripeSessionId)
 - `analyticsEvents` — page views, CTR, CTA clicks, purchases (page, eventType, sessionId, referrer, utmSource/Medium/Campaign, metadata)

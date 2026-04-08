@@ -89,7 +89,7 @@ const statusColors: Record<string, string> = {
   "Sale Closed": "bg-green-600/20 text-green-300",
 };
 
-type TabKey = "dyno" | "dashboard" | "leads" | "blog" | "newsletter" | "users" | "integrations" | "seo" | "services" | "gallery" | "shop" | "pages" | "orders" | "brand" | "waitlist";
+type TabKey = "dyno" | "dashboard" | "leads" | "blog" | "newsletter" | "users" | "integrations" | "seo" | "services" | "gallery" | "shop" | "pages" | "orders" | "commissions" | "brand" | "waitlist";
 
 export default function Admin() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -124,6 +124,7 @@ export default function Admin() {
     { key: "dashboard", label: "Dashboard", icon: BarChart3 },
     { key: "shop", label: "Shop", icon: ShoppingBag },
     { key: "orders", label: "Orders", icon: DollarSign },
+    { key: "commissions", label: "Commissions", icon: Palette },
     { key: "leads", label: "Inquiries", icon: Users },
     ...(user.role === "root" || user.role === "admin" ? [{ key: "waitlist" as TabKey, label: "Waitlist", icon: Mail }] : []),
     { key: "blog", label: "Blog", icon: FileText },
@@ -184,6 +185,7 @@ export default function Admin() {
         {activeTab === "dashboard" && <DashboardTab />}
         {activeTab === "shop" && <ShopTab toast={toast} />}
         {activeTab === "orders" && <OrdersTab toast={toast} />}
+        {activeTab === "commissions" && <CommissionsTab toast={toast} userRole={user.role} />}
         {activeTab === "pages" && (user.role === "root" || user.role === "admin") && <PagesTab toast={toast} />}
         {activeTab === "leads" && <LeadsTab toast={toast} />}
         {activeTab === "waitlist" && (user.role === "root" || user.role === "admin") && <WaitlistTab toast={toast} />}
@@ -4725,6 +4727,25 @@ function parseShippingAddress(raw: string | null | undefined): string {
   }
 }
 
+// ─── CSV Export Utility ───────────────────────────────────────────────────────
+
+function downloadCSV(filename: string, rows: string[][]): void {
+  const escape = (v: any) => {
+    const s = v == null ? "" : String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = rows.map((row) => row.map(escape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── CommissionsTab ───────────────────────────────────────────────────────────
+
 const COMMISSION_STATUS_COLORS: Record<string, string> = {
   awaiting_deposit: "bg-amber-500/20 text-amber-400",
   deposit_paid: "bg-blue-500/20 text-blue-400",
@@ -4734,6 +4755,328 @@ const COMMISSION_STATUS_COLORS: Record<string, string> = {
   complete: "bg-green-500/20 text-green-400",
   cancelled: "bg-gray-500/20 text-gray-400",
 };
+
+function CommissionsTab({ toast, userRole }: { toast: any; userRole: string }) {
+  const { data: commissionsRaw = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/commissions"],
+    queryFn: () => fetch("/api/commissions", { credentials: "include" }).then((r) => r.json()),
+  });
+
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [sendingFinalId, setSendingFinalId] = useState<number | null>(null);
+  const [uploadingId, setUploadingId] = useState<number | null>(null);
+
+  const canEdit = userRole === "root" || userRole === "admin";
+
+  const updateCommission = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, any> }) =>
+      apiRequest("PATCH", `/api/commissions/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      toast({ title: "Commission updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const sendFinalPayment = async (id: number) => {
+    setSendingFinalId(id);
+    try {
+      const res = await apiRequest("POST", `/api/commissions/${id}/final-payment`, {});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      toast({ title: "Final payment link sent", description: "Customer received email with payment link." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to send final payment link", variant: "destructive" });
+    } finally {
+      setSendingFinalId(null);
+    }
+  };
+
+  const handleDeliveryUpload = async (id: number, file: File) => {
+    setUploadingId(id);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData, credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Upload failed");
+      await updateCommission.mutateAsync({ id, data: { deliveryImageUrl: data.url } });
+      toast({ title: "Delivery image uploaded" });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  const exportCSV = () => {
+    const headers = ["ID", "Customer Name", "Customer Email", "Customer Phone", "Style", "Size", "Format", "Extra Subjects", "Total Price", "Deposit Amount", "Status", "Notes", "Created At", "Deposit Paid At", "In Progress At", "Ready At", "Final Sent At", "Final Payment Paid At", "Completed At", "Delivery Image URL"];
+    const rows = commissionsRaw.map((c: any) => [
+      c.id, c.customerName, c.customerEmail, c.customerPhone || "",
+      c.style, c.size, c.format, c.extraSubjects,
+      c.totalPrice, c.depositAmount, c.status, c.notes || "",
+      c.createdAt ? new Date(c.createdAt).toISOString() : "",
+      c.depositPaidAt ? new Date(c.depositPaidAt).toISOString() : "",
+      c.inProgressAt ? new Date(c.inProgressAt).toISOString() : "",
+      c.readyAt ? new Date(c.readyAt).toISOString() : "",
+      c.finalSentAt ? new Date(c.finalSentAt).toISOString() : "",
+      c.finalPaymentPaidAt ? new Date(c.finalPaymentPaidAt).toISOString() : "",
+      c.completedAt ? new Date(c.completedAt).toISOString() : "",
+      c.deliveryImageUrl || "",
+    ]);
+    downloadCSV(`commissions-${new Date().toISOString().slice(0, 10)}.csv`, [headers, ...rows]);
+  };
+
+  const filtered = commissionsRaw.filter((c: any) => {
+    const matchSearch = !search || c.customerName?.toLowerCase().includes(search.toLowerCase()) || c.customerEmail?.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = filterStatus === "all" || c.status === filterStatus;
+    return matchSearch && matchStatus;
+  });
+
+  const selected = selectedId != null ? commissionsRaw.find((c: any) => c.id === selectedId) : null;
+
+  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" /></div>;
+
+  return (
+    <div className="space-y-4" data-testid="tab-commissions-content">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-medium text-[#F5F5F7]">Commissions</h2>
+          <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Portrait commission requests and lifecycle management</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={exportCSV}
+            disabled={!commissionsRaw.length}
+            className="text-xs text-[#B3B3B8]/50 hover:text-[#C084FC] border border-white/8 h-8 px-3"
+            data-testid="button-export-commissions-csv"
+          >
+            <Download className="w-3 h-3 mr-1.5" />
+            Export CSV
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#B3B3B8]/30 pointer-events-none" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or email…"
+            className="bg-[#141416] border-white/8 text-[#F5F5F7] text-xs pl-8 h-8"
+            data-testid="input-commissions-search"
+          />
+        </div>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="h-8 text-xs bg-[#141416] border-white/8 text-[#B3B3B8] w-[160px]" data-testid="select-commissions-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            {["awaiting_deposit", "deposit_paid", "in_progress", "ready", "final_sent", "complete", "cancelled"].map((s) => (
+              <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {!filtered.length ? (
+        <div className="text-center py-16 border border-white/8 rounded-sm">
+          <Palette className="w-8 h-8 text-white/10 mx-auto mb-3" />
+          <p className="text-[#B3B3B8]/40 text-sm">{commissionsRaw.length ? "No commissions match your filters." : "No commissions yet."}</p>
+          <p className="text-[#B3B3B8]/25 text-xs mt-1">Commission requests appear here once customers submit the portrait builder.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* List */}
+          <div className="space-y-2">
+            {filtered.map((c: any) => {
+              const total = parseFloat(c.totalPrice || 0);
+              const deposit = parseFloat(c.depositAmount || 0);
+              const balance = total - deposit;
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => setSelectedId(selectedId === c.id ? null : c.id)}
+                  className={`p-4 rounded-md border cursor-pointer transition-colors ${selectedId === c.id ? "border-[#C084FC]/40 bg-[#1a1422]" : "border-white/5 bg-[#141416] hover:border-white/10"}`}
+                  data-testid={`card-commission-${c.id}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[#F5F5F7] text-sm font-medium truncate" data-testid={`text-commission-name-${c.id}`}>{c.customerName}</p>
+                      <p className="text-[#B3B3B8]/50 text-xs truncate">{c.customerEmail}</p>
+                      <p className="text-[#B3B3B8]/30 text-[10px] mt-0.5">{c.style} · {c.size} · {c.format}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[#C084FC] text-sm font-semibold">${total.toLocaleString()}</p>
+                      <p className="text-[#B3B3B8]/40 text-[10px]">Bal: ${balance.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${COMMISSION_STATUS_COLORS[c.status] || "bg-gray-500/20 text-gray-400"}`} data-testid={`badge-commission-status-${c.id}`}>
+                      {c.status.replace(/_/g, " ")}
+                    </span>
+                    <span className="text-[#B3B3B8]/30 text-[10px]">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}</span>
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-[#B3B3B8]/25 text-[10px] px-1">{filtered.length} commission{filtered.length !== 1 ? "s" : ""}</p>
+          </div>
+
+          {/* Detail Panel */}
+          {selected ? (
+            <div className="p-5 rounded-md border border-white/8 bg-[#141416] space-y-5 self-start" data-testid="panel-commission-detail">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[#C084FC]/70 mb-1">Commission #{selected.id}</p>
+                  <p className="text-[#F5F5F7] font-medium">{selected.customerName}</p>
+                  <p className="text-[#B3B3B8]/50 text-xs">{selected.customerEmail}</p>
+                  {selected.customerPhone && <p className="text-[#B3B3B8]/40 text-xs">{selected.customerPhone}</p>}
+                </div>
+                <button onClick={() => setSelectedId(null)} className="text-[#B3B3B8]/30 hover:text-[#B3B3B8] transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div><p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-0.5">Style</p><p className="text-[#F5F5F7]">{selected.style}</p></div>
+                <div><p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-0.5">Size</p><p className="text-[#F5F5F7]">{selected.size}</p></div>
+                <div><p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-0.5">Format</p><p className="text-[#F5F5F7]">{selected.format}</p></div>
+                <div><p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-0.5">Extra Subjects</p><p className="text-[#F5F5F7]">{selected.extraSubjects}</p></div>
+                <div><p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-0.5">Total</p><p className="text-[#C084FC] font-semibold">${parseFloat(selected.totalPrice || 0).toLocaleString()}</p></div>
+                <div><p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-0.5">Deposit</p><p className="text-[#F5F5F7]">${parseFloat(selected.depositAmount || 0).toLocaleString()}</p></div>
+              </div>
+
+              {selected.notes && (
+                <div>
+                  <p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-1">Notes</p>
+                  <p className="text-[#B3B3B8]/60 text-xs italic">{selected.notes}</p>
+                </div>
+              )}
+
+              {selected.referenceImageUrls?.length > 0 && (
+                <div>
+                  <p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-2">Reference Images</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {selected.referenceImageUrls.map((url: string, i: number) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                        <img src={url} alt={`Reference ${i + 1}`} className="w-14 h-14 object-cover rounded-sm border border-white/10 hover:border-[#C084FC]/40 transition-colors" data-testid={`img-reference-${selected.id}-${i}`} />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Lifecycle timestamps */}
+              <div className="border-t border-white/5 pt-4 space-y-1">
+                <p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-2">Lifecycle</p>
+                {[
+                  { label: "Submitted", val: selected.createdAt },
+                  { label: "Deposit Paid", val: selected.depositPaidAt },
+                  { label: "In Progress", val: selected.inProgressAt },
+                  { label: "Ready", val: selected.readyAt },
+                  { label: "Final Sent", val: selected.finalSentAt },
+                  { label: "Final Paid", val: selected.finalPaymentPaidAt },
+                  { label: "Completed", val: selected.completedAt },
+                ].map(({ label, val }) => val ? (
+                  <div key={label} className="flex justify-between text-[10px]">
+                    <span className="text-[#B3B3B8]/40">{label}</span>
+                    <span className="text-[#B3B3B8]/60">{new Date(val).toLocaleString()}</span>
+                  </div>
+                ) : null)}
+              </div>
+
+              {canEdit && (
+                <div className="border-t border-white/5 pt-4 space-y-4">
+                  <div>
+                    <p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-2">Update Status</p>
+                    <Select
+                      value={selected.status}
+                      onValueChange={(val) => updateCommission.mutate({ id: selected.id, data: { status: val } })}
+                    >
+                      <SelectTrigger className="h-8 text-xs bg-[#0B0B0D] border-white/10 text-[#B3B3B8] w-full" data-testid={`select-detail-status-${selected.id}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["awaiting_deposit", "deposit_paid", "in_progress", "ready", "final_sent", "complete", "cancelled"].map((s) => (
+                          <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {["deposit_paid", "in_progress", "ready"].includes(selected.status) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => sendFinalPayment(selected.id)}
+                      disabled={sendingFinalId === selected.id}
+                      className="w-full h-8 text-xs border-[#C084FC]/30 text-[#C084FC] hover:bg-[#C084FC]/10"
+                      data-testid={`button-send-final-detail-${selected.id}`}
+                    >
+                      {sendingFinalId === selected.id ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <DollarSign className="w-3 h-3 mr-1.5" />}
+                      Send Final Invoice
+                    </Button>
+                  )}
+
+                  {selected.finalPaymentLinkUrl && (
+                    <a
+                      href={selected.finalPaymentLinkUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-[#B3B3B8]/50 hover:text-[#C084FC] flex items-center gap-1"
+                      data-testid={`link-final-payment-detail-${selected.id}`}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      View Payment Link
+                    </a>
+                  )}
+
+                  <div>
+                    <p className="text-[#B3B3B8]/40 uppercase tracking-[0.15em] text-[10px] mb-2">Delivery Image</p>
+                    {selected.deliveryImageUrl ? (
+                      <div className="space-y-2">
+                        <img src={selected.deliveryImageUrl} alt="Delivery" className="w-full max-h-48 object-cover rounded-sm border border-white/10" data-testid={`img-delivery-${selected.id}`} />
+                        <label className="flex items-center gap-1.5 text-[10px] text-[#B3B3B8]/50 hover:text-[#C084FC] cursor-pointer transition-colors">
+                          <Upload className="w-3 h-3" />
+                          Replace image
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleDeliveryUpload(selected.id, e.target.files[0])} data-testid={`input-delivery-replace-${selected.id}`} />
+                        </label>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center gap-2 border border-dashed border-white/10 rounded-sm p-4 cursor-pointer hover:border-[#C084FC]/30 transition-colors">
+                        {uploadingId === selected.id ? (
+                          <Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" />
+                        ) : (
+                          <>
+                            <Upload className="w-5 h-5 text-[#B3B3B8]/30" />
+                            <span className="text-[10px] text-[#B3B3B8]/40">Upload delivery image</span>
+                          </>
+                        )}
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleDeliveryUpload(selected.id, e.target.files[0])} data-testid={`input-delivery-upload-${selected.id}`} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="hidden lg:flex items-center justify-center border border-dashed border-white/5 rounded-sm text-[#B3B3B8]/20 text-xs">
+              Select a commission to view details
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CommissionsSubTab({ toast }: { toast: any }) {
   const { data: commissions = [], isLoading } = useQuery<any[]>({
@@ -4900,11 +5243,35 @@ function OrdersTab({ toast }: { toast: any }) {
     }
   };
 
+  const exportOrdersCSV = () => {
+    const headers = ["ID", "Artwork ID", "Buyer Name", "Buyer Email", "Amount", "Currency", "Status", "Shipping Address", "Date"];
+    const rows = (orders || []).map((o: any) => [
+      o.id, o.artworkId, o.buyerName, o.buyerEmail, o.amount, o.currency || "usd", o.status,
+      o.shippingAddress || "", o.createdAt ? new Date(o.createdAt).toISOString() : "",
+    ]);
+    downloadCSV(`orders-${new Date().toISOString().slice(0, 10)}.csv`, [headers, ...rows]);
+  };
+
   return (
     <div className="space-y-4" data-testid="tab-orders-content">
-      <div>
-        <h2 className="text-lg font-medium text-[#F5F5F7]">Orders</h2>
-        <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Artwork purchases, print orders, and portrait commissions</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-medium text-[#F5F5F7]">Orders</h2>
+          <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Artwork purchases, print orders, and portrait commissions</p>
+        </div>
+        {subTab === "originals" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={exportOrdersCSV}
+            disabled={!orders?.length}
+            className="text-xs text-[#B3B3B8]/50 hover:text-[#C084FC] border border-white/8 h-8 px-3"
+            data-testid="button-export-orders-csv"
+          >
+            <Download className="w-3 h-3 mr-1.5" />
+            Export CSV
+          </Button>
+        )}
       </div>
 
       <div className="flex gap-2 border-b border-white/5 pb-3">

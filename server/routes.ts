@@ -3450,7 +3450,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
     }
   });
 
-  app.get("/api/commissions", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
+  app.get("/api/commissions", authMiddleware, requireRole("root", "admin", "editor"), async (_req, res) => {
     try {
       const all = await storage.getCommissions();
       res.json(all);
@@ -3473,15 +3473,14 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
   app.patch("/api/commissions/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { status, notes } = req.body;
+      const { status, notes, deliveryImageUrl } = req.body;
       const validStatuses = ["awaiting_deposit", "deposit_paid", "in_progress", "ready", "final_sent", "complete", "cancelled"];
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
-      const updateData: Partial<{ status: string; notes: string | null; depositPaidAt: Date; inProgressAt: Date; readyAt: Date; finalSentAt: Date; completedAt: Date }> = {};
+      const updateData: Partial<{ status: string; notes: string | null; deliveryImageUrl: string | null; depositPaidAt: Date; inProgressAt: Date; readyAt: Date; finalSentAt: Date; completedAt: Date }> = {};
       if (status) {
         updateData.status = status;
-        // Set per-stage lifecycle timestamps when admin manually advances status
         if (status === "deposit_paid") updateData.depositPaidAt = new Date();
         else if (status === "in_progress") updateData.inProgressAt = new Date();
         else if (status === "ready") updateData.readyAt = new Date();
@@ -3489,6 +3488,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         else if (status === "complete") updateData.completedAt = new Date();
       }
       if (notes !== undefined) updateData.notes = notes ?? null;
+      if (deliveryImageUrl !== undefined) updateData.deliveryImageUrl = deliveryImageUrl ?? null;
       const updated = await storage.updateCommission(id, updateData);
       if (!updated) return res.status(404).json({ message: "Commission not found" });
       res.json(updated);
