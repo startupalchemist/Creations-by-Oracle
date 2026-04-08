@@ -189,6 +189,7 @@ export interface IStorage {
     customerEmail: string;
     customerPhone?: string | null;
     stripeSessionId?: string | null;
+    stripePaymentIntentId?: string | null;
     status?: string;
   }): Promise<Commission>;
   getCommissions(): Promise<Commission[]>;
@@ -737,6 +738,7 @@ export class DatabaseStorage implements IStorage {
     customerEmail: string;
     customerPhone?: string | null;
     stripeSessionId?: string | null;
+    stripePaymentIntentId?: string | null;
     status?: string;
   }): Promise<Commission> {
     const [result] = await db.insert(commissions).values({
@@ -755,6 +757,7 @@ export class DatabaseStorage implements IStorage {
       customerEmail: data.customerEmail,
       customerPhone: data.customerPhone || null,
       stripeSessionId: data.stripeSessionId || null,
+      stripePaymentIntentId: data.stripePaymentIntentId || null,
       status: data.status || "awaiting_deposit",
     }).returning();
     return result;
