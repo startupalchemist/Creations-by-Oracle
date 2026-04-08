@@ -2121,13 +2121,16 @@ function IntegrationsTab({ toast }: { toast: any }) {
           </Badge>
         </div>
         {printfulStatus?.configured && printfulStatus.store ? (
-          <div className="text-xs text-[#B3B3B8]/60">
-            <span className="text-[#F5F5F7]">{printfulStatus.store.name}</span>
-            {printfulStatus.store.website && <span className="ml-2 text-[#B3B3B8]/40">— {printfulStatus.store.website}</span>}
+          <div className="space-y-1.5">
+            <div className="text-xs text-[#B3B3B8]/60">
+              <span className="text-[#F5F5F7]">{printfulStatus.store.name}</span>
+              {printfulStatus.store.website && <span className="ml-2 text-[#B3B3B8]/40">— {printfulStatus.store.website}</span>}
+            </div>
+            <p className="text-[10px] text-[#B3B3B8]/40">To enable fulfillment for an artwork, enable prints on it in the Shop tab and click "Sync Printful" — this creates the product in your Printful store using the artwork's markup setting.</p>
           </div>
         ) : (
           <p className="text-xs text-[#B3B3B8]/40">
-            Set the <code className="text-[#C084FC] bg-[#C084FC]/10 px-1 rounded">PRINTFUL_API_KEY</code> environment variable to enable automatic print fulfillment. Without it, print variants are still shown and orders are collected — Printful submission is skipped.
+            Set the <code className="text-[#C084FC] bg-[#C084FC]/10 px-1 rounded">PRINTFUL_API_KEY</code> environment variable to enable automatic print fulfillment. Without it, print orders are collected and tracked but not submitted to Printful for production.
           </p>
         )}
       </div>
@@ -4347,11 +4350,11 @@ function ShopTab({ toast }: { toast: any }) {
   const [form, setForm] = useState({
     title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "",
     enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false,
-    seoTitle: "", seoDescription: "", status: "draft",
+    seoTitle: "", seoDescription: "", status: "draft", printMarkupPercent: "40",
   });
 
   const resetForm = () => {
-    setForm({ title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "", enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false, seoTitle: "", seoDescription: "", status: "draft" });
+    setForm({ title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "", enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false, seoTitle: "", seoDescription: "", status: "draft", printMarkupPercent: "40" });
     setAiResult(null);
     setCapturedImage(null);
     setEditingId(null);
@@ -4439,13 +4442,13 @@ function ShopTab({ toast }: { toast: any }) {
     let enhancedImageUrl = form.enhancedImageUrl;
     if (imageUrl && imageUrl.startsWith("data:")) imageUrl = await uploadImage(imageUrl, form.title || "artwork");
     if (enhancedImageUrl && enhancedImageUrl.startsWith("data:")) enhancedImageUrl = await uploadImage(enhancedImageUrl, (form.title || "artwork") + "-enhanced");
-    const payload = { ...form, imageUrl, enhancedImageUrl, year: form.year ? parseInt(form.year) : null, price: form.price || null };
+    const payload = { ...form, imageUrl, enhancedImageUrl, year: form.year ? parseInt(form.year) : null, price: form.price || null, printMarkupPercent: form.printMarkupPercent ? parseInt(form.printMarkupPercent) : 40 };
     if (editingId) { updateArtwork.mutate({ id: editingId, data: payload }); } else { createArtwork.mutate(payload); }
   };
 
   const startEdit = (artwork: Artwork) => {
     setEditingId(artwork.id);
-    setForm({ title: artwork.title, medium: artwork.medium || "", dimensions: artwork.dimensions || "", year: artwork.year ? String(artwork.year) : "", description: artwork.description || "", imageUrl: artwork.imageUrl || "", enhancedImageUrl: artwork.enhancedImageUrl || "", price: artwork.price ? String(artwork.price) : "", forSale: artwork.forSale ?? false, category: artwork.category || "Abstract", featured: artwork.featured ?? false, seoTitle: artwork.seoTitle || "", seoDescription: artwork.seoDescription || "", status: artwork.status || "draft" });
+    setForm({ title: artwork.title, medium: artwork.medium || "", dimensions: artwork.dimensions || "", year: artwork.year ? String(artwork.year) : "", description: artwork.description || "", imageUrl: artwork.imageUrl || "", enhancedImageUrl: artwork.enhancedImageUrl || "", price: artwork.price ? String(artwork.price) : "", forSale: artwork.forSale ?? false, category: artwork.category || "Abstract", featured: artwork.featured ?? false, seoTitle: artwork.seoTitle || "", seoDescription: artwork.seoDescription || "", status: artwork.status || "draft", printMarkupPercent: artwork.printMarkupPercent ? String(artwork.printMarkupPercent) : "40" });
     setShowCreate(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -4554,10 +4557,14 @@ function ShopTab({ toast }: { toast: any }) {
                 <Textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Written or AI-generated artwork description" rows={5} className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm resize-none" data-testid="textarea-artwork-description" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Price (USD)</label>
                   <Input value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="2500" type="number" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-artwork-price" />
+                </div>
+                <div>
+                  <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Print Markup %</label>
+                  <Input value={form.printMarkupPercent} onChange={(e) => setForm((f) => ({ ...f, printMarkupPercent: e.target.value }))} placeholder="40" type="number" min="0" max="500" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-artwork-markup" />
                 </div>
                 <div>
                   <label className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] block mb-1">Status</label>
@@ -4871,7 +4878,7 @@ function OrdersTab({ toast }: { toast: any }) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-[#141416] border-white/10">
-                          {["pending", "paid", "in_production", "shipped", "delivered", "cancelled"].map((s) => (
+                          {["pending", "paid", "submitted", "in_production", "shipped", "delivered", "cancelled"].map((s) => (
                             <SelectItem key={s} value={s} className="text-xs">{s.replace("_", " ")}</SelectItem>
                           ))}
                         </SelectContent>

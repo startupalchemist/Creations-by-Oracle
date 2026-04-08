@@ -579,4 +579,4 @@ export const insertPrintOrderSchema = createInsertSchema(printOrders).omit({
 export type InsertPrintOrder = z.infer<typeof insertPrintOrderSchema>;
 export type PrintOrder = typeof printOrders.$inferSelect;
 
-export const printOrderStatuses = ["pending", "paid", "in_production", "shipped", "delivered", "cancelled"] as const;
+export const printOrderStatuses = ["pending", "paid", "submitted", "in_production", "shipped", "delivered", "cancelled"] as const;

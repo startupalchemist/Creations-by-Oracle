@@ -210,16 +210,22 @@ export async function getPrintfulStoreInfo(): Promise<{
   }
 }
 
+// Template variant IDs are internal placeholders used when no Printful product is linked.
+// When Printful API is configured, the artist syncs each artwork to Printful via
+// POST /api/artworks/:id/sync-printful which creates a real Printful product and
+// stores the real Printful product/variant IDs in printfulProductId. Orders against
+// artworks with a real printfulProductId use live Printful variant IDs; orders against
+// artworks with no Printful product only record the intent (Printful submission is skipped).
 export const PRINT_VARIANT_TEMPLATES: {
   label: string;
   printfulVariantId: number;
   baseCost: number;
   description: string;
 }[] = [
-  { label: 'Poster 11×17"', printfulVariantId: 1, baseCost: 12.5, description: "Matte poster print" },
-  { label: 'Poster 18×24"', printfulVariantId: 2, baseCost: 18.0, description: "Matte poster print" },
-  { label: 'Canvas 16×20"', printfulVariantId: 3, baseCost: 35.0, description: "Gallery-wrapped canvas" },
-  { label: 'Canvas 24×36"', printfulVariantId: 4, baseCost: 55.0, description: "Gallery-wrapped canvas" },
+  { label: 'Poster 11×17"', printfulVariantId: 1001, baseCost: 12.5, description: "Matte poster print" },
+  { label: 'Poster 18×24"', printfulVariantId: 1002, baseCost: 18.0, description: "Matte poster print" },
+  { label: 'Canvas 16×20"', printfulVariantId: 1003, baseCost: 35.0, description: "Gallery-wrapped canvas" },
+  { label: 'Canvas 24×36"', printfulVariantId: 1004, baseCost: 55.0, description: "Gallery-wrapped canvas" },
 ];
 
 export function computeVariantRetailPrice(baseCost: number, markupPercent: number): string {
