@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertLeadSchema, insertWebhookSchema, leadStatuses, webhookEvents, insertArtworkSchema, artworkCategories, artworkStatuses, insertPostSchema, insertTestimonialSchema, insertExhibitionSchema, insertGallerySectionSchema, insertGalleryItemSchema, type Commission } from "@shared/schema";
@@ -279,7 +279,7 @@ export async function registerRoutes(
   });
 
   // ─── Activity Log Helper ─────────────────────────────────────────
-  async function logAdminAction(req: any, actionType: string, summary: string, opts?: { entityType?: string; entityId?: string }) {
+  async function logAdminAction(req: Request, actionType: string, summary: string, opts?: { entityType?: string; entityId?: string }) {
     try {
       if (!req.user) return;
       await storage.createActivityLog({
@@ -1790,6 +1790,7 @@ Respond in JSON format:
         }
       }
       await storage.setSetting("blog_services", value);
+      logAdminAction(req, "setting_changed", `Setting "blog_services" updated`, { entityType: "setting", entityId: "blog_services" });
       res.json({ key: "blog_services", value });
     } catch {
       res.status(500).json({ message: "Failed to update blog services" });
