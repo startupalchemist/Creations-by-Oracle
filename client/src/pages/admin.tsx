@@ -4767,6 +4767,8 @@ function CommissionsTab({ toast, userRole }: { toast: any; userRole: string }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [sendingFinalId, setSendingFinalId] = useState<number | null>(null);
   const [uploadingId, setUploadingId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 15;
 
   const canEdit = userRole === "root" || userRole === "admin";
 
@@ -4812,29 +4814,32 @@ function CommissionsTab({ toast, userRole }: { toast: any; userRole: string }) {
     }
   };
 
-  const exportCSV = () => {
-    const headers = ["ID", "Customer Name", "Customer Email", "Customer Phone", "Style", "Size", "Format", "Extra Subjects", "Total Price", "Deposit Amount", "Status", "Notes", "Created At", "Deposit Paid At", "In Progress At", "Ready At", "Final Sent At", "Final Payment Paid At", "Completed At", "Delivery Image URL"];
-    const rows = commissionsRaw.map((c: any) => [
-      c.id, c.customerName, c.customerEmail, c.customerPhone || "",
-      c.style, c.size, c.format, c.extraSubjects,
-      c.totalPrice, c.depositAmount, c.status, c.notes || "",
-      c.createdAt ? new Date(c.createdAt).toISOString() : "",
-      c.depositPaidAt ? new Date(c.depositPaidAt).toISOString() : "",
-      c.inProgressAt ? new Date(c.inProgressAt).toISOString() : "",
-      c.readyAt ? new Date(c.readyAt).toISOString() : "",
-      c.finalSentAt ? new Date(c.finalSentAt).toISOString() : "",
-      c.finalPaymentPaidAt ? new Date(c.finalPaymentPaidAt).toISOString() : "",
-      c.completedAt ? new Date(c.completedAt).toISOString() : "",
-      c.deliveryImageUrl || "",
-    ]);
-    downloadCSV(`commissions-${new Date().toISOString().slice(0, 10)}.csv`, [headers, ...rows]);
-  };
-
   const filtered = commissionsRaw.filter((c: any) => {
     const matchSearch = !search || c.customerName?.toLowerCase().includes(search.toLowerCase()) || c.customerEmail?.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === "all" || c.status === filterStatus;
     return matchSearch && matchStatus;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const exportCSV = () => {
+    const headers = ["ID", "Customer Name", "Customer Email", "Customer Phone", "Style", "Size", "Format", "Extra Subjects", "Total Price", "Deposit Amount", "Remaining Balance", "Status", "Notes", "Submitted At", "Deposit Paid At", "Delivery Image URL"];
+    const rows = filtered.map((c: any) => {
+      const total = parseFloat(c.totalPrice || 0);
+      const dep = parseFloat(c.depositAmount || 0);
+      return [
+        c.id, c.customerName, c.customerEmail, c.customerPhone || "",
+        c.style, c.size, c.format, c.extraSubjects,
+        total.toFixed(2), dep.toFixed(2), (total - dep).toFixed(2),
+        c.status, c.notes || "",
+        c.createdAt ? new Date(c.createdAt).toISOString() : "",
+        c.depositPaidAt ? new Date(c.depositPaidAt).toISOString() : "",
+        c.deliveryImageUrl || "",
+      ];
+    });
+    downloadCSV(`commissions-${new Date().toISOString().slice(0, 10)}.csv`, [headers, ...rows]);
+  };
 
   const selected = selectedId != null ? commissionsRaw.find((c: any) => c.id === selectedId) : null;
 
@@ -4852,7 +4857,7 @@ function CommissionsTab({ toast, userRole }: { toast: any; userRole: string }) {
             variant="ghost"
             size="sm"
             onClick={exportCSV}
-            disabled={!commissionsRaw.length}
+            disabled={!filtered.length}
             className="text-xs text-[#B3B3B8]/50 hover:text-[#C084FC] border border-white/8 h-8 px-3"
             data-testid="button-export-commissions-csv"
           >
@@ -4867,13 +4872,13 @@ function CommissionsTab({ toast, userRole }: { toast: any; userRole: string }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#B3B3B8]/30 pointer-events-none" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search by name or email…"
             className="bg-[#141416] border-white/8 text-[#F5F5F7] text-xs pl-8 h-8"
             data-testid="input-commissions-search"
           />
         </div>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
+        <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setPage(1); }}>
           <SelectTrigger className="h-8 text-xs bg-[#141416] border-white/8 text-[#B3B3B8] w-[160px]" data-testid="select-commissions-filter">
             <SelectValue />
           </SelectTrigger>
@@ -4896,7 +4901,7 @@ function CommissionsTab({ toast, userRole }: { toast: any; userRole: string }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* List */}
           <div className="space-y-2">
-            {filtered.map((c: any) => {
+            {paginated.map((c: any) => {
               const total = parseFloat(c.totalPrice || 0);
               const deposit = parseFloat(c.depositAmount || 0);
               const balance = total - deposit;
@@ -4915,19 +4920,29 @@ function CommissionsTab({ toast, userRole }: { toast: any; userRole: string }) {
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-[#C084FC] text-sm font-semibold">${total.toLocaleString()}</p>
-                      <p className="text-[#B3B3B8]/40 text-[10px]">Bal: ${balance.toLocaleString()}</p>
+                      <p className="text-[#B3B3B8]/40 text-[10px]">Dep: ${deposit.toLocaleString()} · Bal: ${balance.toLocaleString()}</p>
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-2">
                     <span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${COMMISSION_STATUS_COLORS[c.status] || "bg-gray-500/20 text-gray-400"}`} data-testid={`badge-commission-status-${c.id}`}>
                       {c.status.replace(/_/g, " ")}
                     </span>
-                    <span className="text-[#B3B3B8]/30 text-[10px]">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}</span>
+                    <span className="text-[#B3B3B8]/30 text-[10px]">
+                      {c.depositPaidAt ? `Dep: ${new Date(c.depositPaidAt).toLocaleDateString()}` : c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}
+                    </span>
                   </div>
                 </div>
               );
             })}
-            <p className="text-[#B3B3B8]/25 text-[10px] px-1">{filtered.length} commission{filtered.length !== 1 ? "s" : ""}</p>
+            <div className="flex items-center justify-between px-1">
+              <p className="text-[#B3B3B8]/25 text-[10px]">{filtered.length} commission{filtered.length !== 1 ? "s" : ""}{totalPages > 1 ? ` · page ${page}/${totalPages}` : ""}</p>
+              {totalPages > 1 && (
+                <div className="flex gap-1">
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-0.5 text-[10px] text-[#B3B3B8]/50 hover:text-[#C084FC] disabled:opacity-30 transition-colors" data-testid="button-commissions-prev">← Prev</button>
+                  <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-2 py-0.5 text-[10px] text-[#B3B3B8]/50 hover:text-[#C084FC] disabled:opacity-30 transition-colors" data-testid="button-commissions-next">Next →</button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Detail Panel */}
@@ -5012,7 +5027,7 @@ function CommissionsTab({ toast, userRole }: { toast: any; userRole: string }) {
                     </Select>
                   </div>
 
-                  {["deposit_paid", "in_progress", "ready"].includes(selected.status) && (
+                  {["deposit_paid", "in_progress", "ready"].includes(selected.status) && !selected.finalPaymentLinkUrl && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -5206,6 +5221,10 @@ function OrdersTab({ toast }: { toast: any }) {
   const { data: orders, isLoading } = useQuery<any[]>({
     queryKey: ["/api/orders"],
   });
+  const { data: artworks } = useQuery<any[]>({
+    queryKey: ["/api/artworks"],
+    queryFn: () => fetch("/api/artworks", { credentials: "include" }).then((r) => r.json()),
+  });
   const { data: printOrders, isLoading: printLoading } = useQuery<any[]>({
     queryKey: ["/api/print-orders"],
     queryFn: () => fetch("/api/print-orders", { credentials: "include" }).then((r) => r.json()),
@@ -5243,10 +5262,13 @@ function OrdersTab({ toast }: { toast: any }) {
     }
   };
 
+  const artworkMap = new Map((artworks || []).map((a: any) => [a.id, a.title]));
+
   const exportOrdersCSV = () => {
-    const headers = ["ID", "Artwork ID", "Buyer Name", "Buyer Email", "Amount", "Currency", "Status", "Shipping Address", "Date"];
+    const headers = ["ID", "Artwork Title", "Artwork ID", "Buyer Name", "Buyer Email", "Amount", "Currency", "Status", "Shipping Address", "Date"];
     const rows = (orders || []).map((o: any) => [
-      o.id, o.artworkId, o.buyerName, o.buyerEmail, o.amount, o.currency || "usd", o.status,
+      o.id, artworkMap.get(o.artworkId) || `Artwork #${o.artworkId}`, o.artworkId,
+      o.buyerName, o.buyerEmail, parseFloat(o.amount || 0).toFixed(2), o.currency || "usd", o.status,
       o.shippingAddress || "", o.createdAt ? new Date(o.createdAt).toISOString() : "",
     ]);
     downloadCSV(`orders-${new Date().toISOString().slice(0, 10)}.csv`, [headers, ...rows]);
