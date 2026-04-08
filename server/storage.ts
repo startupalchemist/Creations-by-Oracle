@@ -194,6 +194,7 @@ export interface IStorage {
   getCommissions(): Promise<Commission[]>;
   getCommissionById(id: number): Promise<Commission | undefined>;
   getCommissionBySessionId(sessionId: string): Promise<Commission | undefined>;
+  getCommissionByPaymentIntentId(paymentIntentId: string): Promise<Commission | undefined>;
   updateCommission(id: number, data: Partial<Commission>): Promise<Commission | undefined>;
 }
 
@@ -770,6 +771,11 @@ export class DatabaseStorage implements IStorage {
 
   async getCommissionBySessionId(sessionId: string): Promise<Commission | undefined> {
     const [result] = await db.select().from(commissions).where(eq(commissions.stripeSessionId, sessionId));
+    return result;
+  }
+
+  async getCommissionByPaymentIntentId(paymentIntentId: string): Promise<Commission | undefined> {
+    const [result] = await db.select().from(commissions).where(eq(commissions.stripePaymentIntentId, paymentIntentId));
     return result;
   }
 

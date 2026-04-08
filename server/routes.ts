@@ -2561,7 +2561,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       if (event.type === "payment_intent.succeeded") {
         const paymentIntent = event.data.object;
         if (paymentIntent.metadata?.commissionType === "deposit") {
-          const commission = await storage.getCommissionBySessionId(paymentIntent.id);
+          const commission = await storage.getCommissionByPaymentIntentId(paymentIntent.id);
           if (commission) {
             await storage.updateCommission(commission.id, {
               status: "deposit_paid",
@@ -2655,8 +2655,27 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         customerName, customerEmail, customerPhone,
       } = req.body;
 
+      const VALID_STYLES = ["Realism", "Fusion", "Oracle"] as const;
+      const VALID_SIZES = ["Small (8×10)", "Medium (11×14)", "Large (16×20)", "X-Large (18×24)", "XX-Large (24×36)", "XXX-Large (30×40+)"] as const;
+      const VALID_FORMATS = ["Digital", "Paper", "Canvas"] as const;
+
       if (!style || !size || !format || !customerName || !customerEmail) {
         return res.status(400).json({ message: "Missing required fields" });
+      }
+      if (!(VALID_STYLES as readonly string[]).includes(style)) {
+        return res.status(400).json({ message: "Invalid style" });
+      }
+      if (!(VALID_SIZES as readonly string[]).includes(size)) {
+        return res.status(400).json({ message: "Invalid size" });
+      }
+      if (!(VALID_FORMATS as readonly string[]).includes(format)) {
+        return res.status(400).json({ message: "Invalid format" });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+        return res.status(400).json({ message: "Invalid email address" });
+      }
+      if (Array.isArray(referenceImageUrls) && referenceImageUrls.length > 5) {
+        return res.status(400).json({ message: "Maximum 5 reference images allowed" });
       }
 
       // Load pricing matrix from settings
@@ -2767,7 +2786,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         customerName,
         customerEmail,
         customerPhone: customerPhone || null,
-        stripeSessionId: paymentIntent.id,
+        stripePaymentIntentId: paymentIntent.id,
         status: "awaiting_deposit",
       });
 

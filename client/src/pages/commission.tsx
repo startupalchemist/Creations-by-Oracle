@@ -268,26 +268,30 @@ export default function Commission() {
   });
 
   const uploadFile = useCallback(
-    async (file: File) => {
+    (file: File) => {
       if (referenceImages.length >= 5) {
         toast({ title: "Max 5 reference images", variant: "destructive" });
         return;
       }
       setUploading(true);
-      try {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
+      const reader = new FileReader();
+      reader.onerror = () => {
+        toast({ title: "Upload failed", description: "Could not read file.", variant: "destructive" });
+        setUploading(false);
+      };
+      reader.onload = async (e) => {
+        try {
           const base64 = (e.target?.result as string).split(",")[1];
           const res = await apiRequest("POST", "/api/upload", { imageData: base64, filename: file.name });
           const data = await res.json();
           setReferenceImages((prev) => [...prev, { url: data.url, name: file.name }]);
+        } catch {
+          toast({ title: "Upload failed", description: "Server error. Please try again.", variant: "destructive" });
+        } finally {
           setUploading(false);
-        };
-        reader.readAsDataURL(file);
-      } catch {
-        toast({ title: "Upload failed", variant: "destructive" });
-        setUploading(false);
-      }
+        }
+      };
+      reader.readAsDataURL(file);
     },
     [referenceImages, toast]
   );
