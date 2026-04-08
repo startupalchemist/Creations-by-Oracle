@@ -2,9 +2,63 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Eye, ShoppingBag, Palette, Layers } from "lucide-react";
+import { ArrowRight, Eye, ShoppingBag, Palette, Layers, Quote } from "lucide-react";
 import type { Artwork } from "@shared/schema";
 import { useOgImage } from "@/hooks/use-og-image";
+
+interface Testimonial {
+  id: number;
+  collectorName: string;
+  location: string | null;
+  quote: string;
+  artworkId: number | null;
+  displayOrder: number;
+  active: boolean;
+}
+
+function TestimonialsSection() {
+  const { data: testimonials = [] } = useQuery<Testimonial[]>({
+    queryKey: ["/api/testimonials"],
+    queryFn: () => fetch("/api/testimonials?active=true").then((r) => r.json()),
+  });
+
+  const { ref, inView } = useInView();
+
+  const visible = testimonials.slice(0, 3);
+  if (visible.length === 0) return null;
+
+  return (
+    <section ref={ref} className="py-20 px-6 lg:px-10 border-t border-white/5 bg-[#0c0915]" data-testid="section-testimonials">
+      <div className="max-w-7xl mx-auto">
+        <div
+          className={`transition-all duration-700 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
+        >
+          <span className="text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/50 block mb-3">Collectors</span>
+          <h2 className="text-2xl font-light text-white mb-10" style={{ fontFamily: "Georgia, serif" }}>
+            What collectors say
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {visible.map((t, i) => (
+            <div
+              key={t.id}
+              className={`p-6 rounded-sm border border-white/8 transition-all duration-700 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
+              style={{ background: "rgba(255,255,255,0.02)", transitionDelay: `${i * 100}ms` }}
+              data-testid={`card-testimonial-${t.id}`}
+            >
+              <Quote className="w-5 h-5 text-[#C084FC]/30 mb-4" />
+              <p className="text-[#B3B3B8]/80 text-sm leading-relaxed italic mb-5">"{t.quote}"</p>
+              <div>
+                <p className="text-[#F5F5F7] text-xs font-medium">{t.collectorName}</p>
+                {t.location && <p className="text-[#B3B3B8]/40 text-[10px] mt-0.5">{t.location}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function useInView(threshold = 0.15) {
   const ref = useRef<HTMLDivElement>(null);
@@ -384,6 +438,7 @@ export default function Home() {
       <HeroSection />
       <MediumsSection />
       <FeaturedWorksSection />
+      <TestimonialsSection />
       <AboutSection />
       <CommissionCTASection />
     </div>

@@ -1,10 +1,39 @@
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Palette } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowRight, Palette, Quote } from "lucide-react";
 import { useOgImage } from "@/hooks/use-og-image";
+
+interface Testimonial {
+  id: number;
+  collectorName: string;
+  location: string | null;
+  quote: string;
+  active: boolean;
+}
+
+interface Exhibition {
+  id: number;
+  venueName: string;
+  city: string;
+  year: number;
+  showName: string;
+  showType: string;
+}
 
 export default function About() {
   const defaultOgImage = useOgImage();
+
+  const { data: testimonials = [] } = useQuery<Testimonial[]>({
+    queryKey: ["/api/testimonials"],
+    queryFn: () => fetch("/api/testimonials?active=true").then((r) => r.json()),
+  });
+
+  const { data: exhibitions = [] } = useQuery<Exhibition[]>({
+    queryKey: ["/api/exhibitions"],
+  });
+
   return (
     <div className="min-h-screen bg-[#08060e]" data-testid="page-about">
       <title>About the Artist — Creations by Oracle</title>
@@ -115,6 +144,60 @@ export default function About() {
           </div>
         </div>
       </div>
+
+      {/* Exhibitions */}
+      {exhibitions.length > 0 && (
+        <div className="border-t border-white/5 bg-[#08060e] py-16 px-6 lg:px-10" data-testid="section-exhibitions">
+          <div className="max-w-7xl mx-auto">
+            <span className="text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/50 block mb-4">Exhibition History</span>
+            <h2 className="text-2xl font-light text-white mb-10" style={{ fontFamily: "Georgia, serif" }}>Shows & Exhibitions</h2>
+            <div className="space-y-3 max-w-3xl">
+              {exhibitions.map((ex) => (
+                <div
+                  key={ex.id}
+                  className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 p-4 rounded-sm border border-white/5 hover:border-white/10 transition-colors"
+                  style={{ background: "rgba(255,255,255,0.02)" }}
+                  data-testid={`row-exhibition-${ex.id}`}
+                >
+                  <span className="text-[#C084FC] text-sm font-semibold w-12 shrink-0">{ex.year}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[#F5F5F7] text-sm">{ex.showName}</p>
+                    <p className="text-[#B3B3B8]/50 text-xs">{ex.venueName} — {ex.city}</p>
+                  </div>
+                  <Badge className="bg-[#5D3FD3]/15 text-[#B3B3B8]/60 border-0 no-default-hover-elevate no-default-active-elevate text-[10px] self-start sm:self-auto">{ex.showType}</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collector Testimonials */}
+      {testimonials.length > 0 && (
+        <div className="border-t border-white/5 bg-[#0c0915] py-16 px-6 lg:px-10" data-testid="section-about-testimonials">
+          <div className="max-w-7xl mx-auto">
+            <span className="text-[10px] uppercase tracking-[0.4em] text-[#C084FC]/50 block mb-4">Collectors</span>
+            <h2 className="text-2xl font-light text-white mb-10" style={{ fontFamily: "Georgia, serif" }}>What collectors say</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {testimonials.map((t) => (
+                <div
+                  key={t.id}
+                  className="p-6 rounded-sm border border-white/8"
+                  style={{ background: "rgba(255,255,255,0.02)" }}
+                  data-testid={`card-about-testimonial-${t.id}`}
+                >
+                  <Quote className="w-5 h-5 text-[#C084FC]/30 mb-4" />
+                  <p className="text-[#B3B3B8]/80 text-sm leading-relaxed italic mb-5">"{t.quote}"</p>
+                  <div>
+                    <p className="text-[#F5F5F7] text-xs font-medium">{t.collectorName}</p>
+                    {t.location && <p className="text-[#B3B3B8]/40 text-[10px] mt-0.5">{t.location}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CTA */}
       <div className="py-16 px-6 lg:px-10 text-center border-t border-white/5 bg-[#08060e]" data-testid="section-about-cta">

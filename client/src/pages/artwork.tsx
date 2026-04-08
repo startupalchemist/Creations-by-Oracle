@@ -5,7 +5,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, ShoppingBag, Palette, CheckCircle, Loader2, Share2, Eye, X, ZoomIn, Printer, ChevronDown } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Palette, CheckCircle, Loader2, Share2, Eye, X, ZoomIn, Printer, ChevronDown, BookOpen } from "lucide-react";
 import type { Artwork } from "@shared/schema";
 
 function useSessionId() {
@@ -90,6 +90,46 @@ function SoldWaitlistPanel({ artwork }: { artwork: Artwork }) {
             </Link>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+function ProvenanceSection({ artwork }: { artwork: Artwork }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-4 border border-white/8 rounded-sm overflow-hidden" data-testid="section-provenance">
+      <button
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/3 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+        data-testid="button-provenance-toggle"
+      >
+        <div className="flex items-center gap-3">
+          <BookOpen className="w-4 h-4 text-[#C084FC]" />
+          <div className="text-left">
+            <p className="text-sm text-[#F5F5F7]">Provenance & Edition</p>
+            <p className="text-[10px] text-[#B3B3B8]/40 uppercase tracking-[0.15em]">Origin and edition details</p>
+          </div>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-[#B3B3B8]/40 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 border-t border-white/5 pt-4 space-y-4">
+          {artwork.editionInfo && (
+            <div data-testid="text-edition-info">
+              <p className="text-[9px] uppercase tracking-[0.2em] text-[#B3B3B8]/30 mb-1">Edition</p>
+              <p className="text-[#B3B3B8]/70 text-sm leading-relaxed">{artwork.editionInfo}</p>
+            </div>
+          )}
+          {artwork.provenanceNotes && (
+            <div data-testid="text-provenance-notes">
+              <p className="text-[9px] uppercase tracking-[0.2em] text-[#B3B3B8]/30 mb-1">Provenance</p>
+              <p className="text-[#B3B3B8]/70 text-sm leading-relaxed whitespace-pre-line">{artwork.provenanceNotes}</p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -656,6 +696,11 @@ export default function ArtworkPage() {
               </p>
 
               <PrintSection artwork={artwork} />
+
+              {/* Provenance & Edition Info */}
+              {(artwork.provenanceNotes || artwork.editionInfo) && (
+                <ProvenanceSection artwork={artwork} />
+              )}
             </div>
           </div>
         </div>

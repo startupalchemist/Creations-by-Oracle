@@ -354,6 +354,9 @@ export const artworks = pgTable("artworks", {
   printsAvailable: boolean("prints_available").notNull().default(false),
   printfulProductId: text("printful_product_id"),
   printMarkupPercent: integer("print_markup_percent").notNull().default(40),
+  // Provenance & Edition
+  provenanceNotes: text("provenance_notes"),
+  editionInfo: text("edition_info"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -580,3 +583,47 @@ export type InsertPrintOrder = z.infer<typeof insertPrintOrderSchema>;
 export type PrintOrder = typeof printOrders.$inferSelect;
 
 export const printOrderStatuses = ["pending", "paid", "submitted", "in_production", "shipped", "delivered", "cancelled"] as const;
+
+// ─── Testimonials ─────────────────────────────────────────────────────────────
+
+export const testimonials = pgTable("testimonials", {
+  id: serial("id").primaryKey(),
+  collectorName: text("collector_name").notNull(),
+  location: text("location"),
+  quote: text("quote").notNull(),
+  artworkId: integer("artwork_id").references(() => artworks.id, { onDelete: "set null" }),
+  displayOrder: integer("display_order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTestimonialSchema = createInsertSchema(testimonials).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTestimonial = z.infer<typeof insertTestimonialSchema>;
+export type Testimonial = typeof testimonials.$inferSelect;
+
+// ─── Exhibitions ─────────────────────────────────────────────────────────────
+
+export const exhibitions = pgTable("exhibitions", {
+  id: serial("id").primaryKey(),
+  venueName: text("venue_name").notNull(),
+  city: text("city").notNull(),
+  year: integer("year").notNull(),
+  showName: text("show_name").notNull(),
+  showType: text("show_type").notNull().default("Group"),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertExhibitionSchema = createInsertSchema(exhibitions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertExhibition = z.infer<typeof insertExhibitionSchema>;
+export type Exhibition = typeof exhibitions.$inferSelect;
+
+export const exhibitionShowTypes = ["Solo", "Group", "Juried", "Invitational"] as const;

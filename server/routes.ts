@@ -3385,6 +3385,125 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
     }
   });
 
+  // ─── Testimonials ──────────────────────────────────────────────────────────────
+
+  app.get("/api/testimonials", async (req, res) => {
+    try {
+      const activeOnly = req.query.active === "true";
+      const list = await storage.getTestimonials(activeOnly);
+      res.json(list);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch testimonials" });
+    }
+  });
+
+  app.post("/api/testimonials", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const { collectorName, location, quote, artworkId, displayOrder, active } = req.body;
+      if (!collectorName || !quote) {
+        return res.status(400).json({ message: "collectorName and quote are required" });
+      }
+      const item = await storage.createTestimonial({
+        collectorName,
+        location: location || null,
+        quote,
+        artworkId: artworkId ? parseInt(artworkId) : null,
+        displayOrder: displayOrder ?? 0,
+        active: active !== false,
+      });
+      res.status(201).json(item);
+    } catch {
+      res.status(500).json({ message: "Failed to create testimonial" });
+    }
+  });
+
+  app.patch("/api/testimonials/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { collectorName, location, quote, artworkId, displayOrder, active } = req.body;
+      const updates: Record<string, any> = {};
+      if (collectorName !== undefined) updates.collectorName = collectorName;
+      if (location !== undefined) updates.location = location;
+      if (quote !== undefined) updates.quote = quote;
+      if (artworkId !== undefined) updates.artworkId = artworkId ? parseInt(artworkId) : null;
+      if (displayOrder !== undefined) updates.displayOrder = displayOrder;
+      if (active !== undefined) updates.active = active;
+      const item = await storage.updateTestimonial(id, updates);
+      if (!item) return res.status(404).json({ message: "Testimonial not found" });
+      res.json(item);
+    } catch {
+      res.status(500).json({ message: "Failed to update testimonial" });
+    }
+  });
+
+  app.delete("/api/testimonials/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      await storage.deleteTestimonial(parseInt(req.params.id));
+      res.json({ message: "Deleted" });
+    } catch {
+      res.status(500).json({ message: "Failed to delete testimonial" });
+    }
+  });
+
+  // ─── Exhibitions ───────────────────────────────────────────────────────────────
+
+  app.get("/api/exhibitions", async (_req, res) => {
+    try {
+      const list = await storage.getExhibitions();
+      res.json(list);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch exhibitions" });
+    }
+  });
+
+  app.post("/api/exhibitions", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const { venueName, city, year, showName, showType, displayOrder } = req.body;
+      if (!venueName || !city || !year || !showName) {
+        return res.status(400).json({ message: "venueName, city, year, showName are required" });
+      }
+      const item = await storage.createExhibition({
+        venueName,
+        city,
+        year: parseInt(year),
+        showName,
+        showType: showType || "Group",
+        displayOrder: displayOrder ?? 0,
+      });
+      res.status(201).json(item);
+    } catch {
+      res.status(500).json({ message: "Failed to create exhibition" });
+    }
+  });
+
+  app.patch("/api/exhibitions/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { venueName, city, year, showName, showType, displayOrder } = req.body;
+      const updates: Record<string, any> = {};
+      if (venueName !== undefined) updates.venueName = venueName;
+      if (city !== undefined) updates.city = city;
+      if (year !== undefined) updates.year = parseInt(year);
+      if (showName !== undefined) updates.showName = showName;
+      if (showType !== undefined) updates.showType = showType;
+      if (displayOrder !== undefined) updates.displayOrder = displayOrder;
+      const item = await storage.updateExhibition(id, updates);
+      if (!item) return res.status(404).json({ message: "Exhibition not found" });
+      res.json(item);
+    } catch {
+      res.status(500).json({ message: "Failed to update exhibition" });
+    }
+  });
+
+  app.delete("/api/exhibitions/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      await storage.deleteExhibition(parseInt(req.params.id));
+      res.json({ message: "Deleted" });
+    } catch {
+      res.status(500).json({ message: "Failed to delete exhibition" });
+    }
+  });
+
   return httpServer;
 }
 

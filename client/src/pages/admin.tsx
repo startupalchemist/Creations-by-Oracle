@@ -4351,10 +4351,11 @@ function ShopTab({ toast }: { toast: any }) {
     title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "",
     enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false,
     seoTitle: "", seoDescription: "", status: "draft", printMarkupPercent: "40",
+    provenanceNotes: "", editionInfo: "",
   });
 
   const resetForm = () => {
-    setForm({ title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "", enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false, seoTitle: "", seoDescription: "", status: "draft", printMarkupPercent: "40" });
+    setForm({ title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "", enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false, seoTitle: "", seoDescription: "", status: "draft", printMarkupPercent: "40", provenanceNotes: "", editionInfo: "" });
     setAiResult(null);
     setCapturedImage(null);
     setEditingId(null);
@@ -4448,7 +4449,7 @@ function ShopTab({ toast }: { toast: any }) {
 
   const startEdit = (artwork: Artwork) => {
     setEditingId(artwork.id);
-    setForm({ title: artwork.title, medium: artwork.medium || "", dimensions: artwork.dimensions || "", year: artwork.year ? String(artwork.year) : "", description: artwork.description || "", imageUrl: artwork.imageUrl || "", enhancedImageUrl: artwork.enhancedImageUrl || "", price: artwork.price ? String(artwork.price) : "", forSale: artwork.forSale ?? false, category: artwork.category || "Abstract", featured: artwork.featured ?? false, seoTitle: artwork.seoTitle || "", seoDescription: artwork.seoDescription || "", status: artwork.status || "draft", printMarkupPercent: artwork.printMarkupPercent ? String(artwork.printMarkupPercent) : "40" });
+    setForm({ title: artwork.title, medium: artwork.medium || "", dimensions: artwork.dimensions || "", year: artwork.year ? String(artwork.year) : "", description: artwork.description || "", imageUrl: artwork.imageUrl || "", enhancedImageUrl: artwork.enhancedImageUrl || "", price: artwork.price ? String(artwork.price) : "", forSale: artwork.forSale ?? false, category: artwork.category || "Abstract", featured: artwork.featured ?? false, seoTitle: artwork.seoTitle || "", seoDescription: artwork.seoDescription || "", status: artwork.status || "draft", printMarkupPercent: artwork.printMarkupPercent ? String(artwork.printMarkupPercent) : "40", provenanceNotes: (artwork as any).provenanceNotes || "", editionInfo: (artwork as any).editionInfo || "" });
     setShowCreate(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -4588,6 +4589,12 @@ function ShopTab({ toast }: { toast: any }) {
                   <Switch checked={form.featured} onCheckedChange={(v) => setForm((f) => ({ ...f, featured: v }))} data-testid="switch-artwork-featured" />
                   <label className="text-[#B3B3B8]/70 text-xs">Featured on Home</label>
                 </div>
+              </div>
+
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <label className="text-[#B3B3B8]/40 text-[10px] uppercase tracking-[0.15em] block">Provenance & Edition</label>
+                <Input value={form.editionInfo} onChange={(e) => setForm((f) => ({ ...f, editionInfo: e.target.value }))} placeholder="Edition info (e.g. 1 of 1, AP 2/5...)" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-xs" data-testid="input-artwork-edition" />
+                <Textarea value={form.provenanceNotes} onChange={(e) => setForm((f) => ({ ...f, provenanceNotes: e.target.value }))} placeholder="Provenance notes (previous owners, exhibition history, etc.)" rows={2} className="bg-[#141416] border-white/10 text-[#F5F5F7] text-xs resize-none" data-testid="textarea-artwork-provenance" />
               </div>
 
               <div className="pt-2 border-t border-white/5 space-y-2">
@@ -5053,76 +5060,389 @@ function BrandTab({ toast }: { toast: any }) {
   }
 
   return (
-    <div className="space-y-8 max-w-2xl" data-testid="tab-content-brand">
-      <div>
-        <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 mb-1">Brand Settings</p>
-        <p className="text-[#B3B3B8]/40 text-xs">Update your artist name, tagline, contact email, and social links. These appear in the site header, footer, and public pages.</p>
-      </div>
-
-      <div className="space-y-5 p-6 rounded-md bg-[#141416] border border-white/5">
-        <p className="text-xs uppercase tracking-[0.25em] text-[#C084FC]/70 font-semibold mb-2">Identity</p>
-
+    <div className="space-y-10" data-testid="tab-content-brand">
+      <div className="max-w-2xl space-y-8">
         <div>
-          <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Artist / Brand Name</label>
-          <Input
-            value={form.artist_name}
-            onChange={(e) => setForm((f) => ({ ...f, artist_name: e.target.value }))}
-            placeholder="Creations by Oracle"
-            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
-            data-testid="input-brand-artist-name"
-          />
+          <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 mb-1">Brand Settings</p>
+          <p className="text-[#B3B3B8]/40 text-xs">Update your artist name, tagline, contact email, and social links. These appear in the site header, footer, and public pages.</p>
         </div>
 
-        <div>
-          <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Tagline</label>
-          <Input
-            value={form.artist_tagline}
-            onChange={(e) => setForm((f) => ({ ...f, artist_tagline: e.target.value }))}
-            placeholder="Original Art"
-            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
-            data-testid="input-brand-tagline"
-          />
-        </div>
+        <div className="space-y-5 p-6 rounded-md bg-[#141416] border border-white/5">
+          <p className="text-xs uppercase tracking-[0.25em] text-[#C084FC]/70 font-semibold mb-2">Identity</p>
 
-        <div>
-          <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Contact Email</label>
-          <Input
-            type="email"
-            value={form.artist_email}
-            onChange={(e) => setForm((f) => ({ ...f, artist_email: e.target.value }))}
-            placeholder="hello@example.com"
-            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
-            data-testid="input-brand-email"
-          />
-        </div>
-      </div>
-
-      <div className="space-y-5 p-6 rounded-md bg-[#141416] border border-white/5">
-        <p className="text-xs uppercase tracking-[0.25em] text-[#C084FC]/70 font-semibold mb-2">Social Links</p>
-
-        {SOCIAL_FIELDS.map(({ key, label, placeholder, testid }) => (
-          <div key={key}>
-            <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">{label}</label>
+          <div>
+            <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Artist / Brand Name</label>
             <Input
-              value={form[key]}
-              onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-              placeholder={placeholder}
+              value={form.artist_name}
+              onChange={(e) => setForm((f) => ({ ...f, artist_name: e.target.value }))}
+              placeholder="Creations by Oracle"
               className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
-              data-testid={testid}
+              data-testid="input-brand-artist-name"
             />
           </div>
-        ))}
+
+          <div>
+            <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Tagline</label>
+            <Input
+              value={form.artist_tagline}
+              onChange={(e) => setForm((f) => ({ ...f, artist_tagline: e.target.value }))}
+              placeholder="Original Art"
+              className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
+              data-testid="input-brand-tagline"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Contact Email</label>
+            <Input
+              type="email"
+              value={form.artist_email}
+              onChange={(e) => setForm((f) => ({ ...f, artist_email: e.target.value }))}
+              placeholder="hello@example.com"
+              className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
+              data-testid="input-brand-email"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-5 p-6 rounded-md bg-[#141416] border border-white/5">
+          <p className="text-xs uppercase tracking-[0.25em] text-[#C084FC]/70 font-semibold mb-2">Social Links</p>
+
+          {SOCIAL_FIELDS.map(({ key, label, placeholder, testid }) => (
+            <div key={key}>
+              <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">{label}</label>
+              <Input
+                value={form[key]}
+                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                placeholder={placeholder}
+                className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
+                data-testid={testid}
+              />
+            </div>
+          ))}
+        </div>
+
+        <Button
+          onClick={() => saveMutation.mutate(form)}
+          disabled={saveMutation.isPending}
+          className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold px-8 py-3 h-auto"
+          data-testid="button-brand-save"
+        >
+          {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Save className="w-3.5 h-3.5 mr-2" />}
+          Save Brand Settings
+        </Button>
       </div>
 
-      <Button
-        onClick={() => saveMutation.mutate(form)}
-        disabled={saveMutation.isPending}
-        className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold px-8 py-3 h-auto"
-        data-testid="button-brand-save"
-      >
-        {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Save className="w-3.5 h-3.5 mr-2" />}
-        Save Brand Settings
-      </Button>
+      <hr className="border-white/5" />
+      <TestimonialsAdmin toast={toast} />
+      <hr className="border-white/5" />
+      <ExhibitionsAdmin toast={toast} />
+    </div>
+  );
+}
+
+interface TestimonialItem {
+  id: number;
+  collectorName: string;
+  location: string | null;
+  quote: string;
+  artworkId: number | null;
+  displayOrder: number;
+  active: boolean;
+  createdAt: string;
+}
+
+function TestimonialsAdmin({ toast }: { toast: any }) {
+  const { data: items = [], isLoading } = useQuery<TestimonialItem[]>({
+    queryKey: ["/api/testimonials"],
+  });
+
+  const [editing, setEditing] = useState<TestimonialItem | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ collectorName: "", location: "", quote: "", displayOrder: 0, active: true });
+
+  const createMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/testimonials", form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/testimonials"] });
+      setShowForm(false);
+      setForm({ collectorName: "", location: "", quote: "", displayOrder: 0, active: true });
+      toast({ title: "Testimonial added" });
+    },
+    onError: () => toast({ title: "Failed to add", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { id: number } & typeof form) =>
+      apiRequest("PATCH", `/api/testimonials/${data.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/testimonials"] });
+      setEditing(null);
+      toast({ title: "Testimonial updated" });
+    },
+    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/testimonials/${id}`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/testimonials"] });
+      toast({ title: "Testimonial deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+  });
+
+  const toggleActive = (item: TestimonialItem) => {
+    updateMutation.mutate({ id: item.id, collectorName: item.collectorName, location: item.location || "", quote: item.quote, displayOrder: item.displayOrder, active: !item.active });
+  };
+
+  return (
+    <div data-testid="section-testimonials-admin">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50">Collector Testimonials</p>
+          <p className="text-[#B3B3B8]/30 text-xs mt-0.5">Shown on the home page (top 3 active) and about page.</p>
+        </div>
+        <Button
+          onClick={() => setShowForm(true)}
+          className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-8 px-3"
+          data-testid="button-add-testimonial"
+        >
+          <Plus className="w-3.5 h-3.5 mr-1" /> Add
+        </Button>
+      </div>
+
+      {showForm && (
+        <div className="p-5 rounded-md bg-[#141416] border border-white/10 mb-4 space-y-3">
+          <p className="text-[#C084FC] text-xs uppercase tracking-[0.2em] font-semibold">New Testimonial</p>
+          <Input value={form.collectorName} onChange={(e) => setForm((f) => ({ ...f, collectorName: e.target.value }))} placeholder="Collector name *" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-testimonial-name" />
+          <Input value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} placeholder="Location (city, country)" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-testimonial-location" />
+          <Textarea value={form.quote} onChange={(e) => setForm((f) => ({ ...f, quote: e.target.value }))} placeholder="Quote *" rows={3} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm resize-none" data-testid="input-testimonial-quote" />
+          <div className="flex items-center gap-2">
+            <Input type="number" value={form.displayOrder} onChange={(e) => setForm((f) => ({ ...f, displayOrder: parseInt(e.target.value) || 0 }))} placeholder="Order" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-24" data-testid="input-testimonial-order" />
+            <div className="flex items-center gap-2 ml-auto">
+              <label className="text-[#B3B3B8]/50 text-xs">Active</label>
+              <Switch checked={form.active} onCheckedChange={(v) => setForm((f) => ({ ...f, active: v }))} data-testid="switch-testimonial-active" />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button onClick={() => createMutation.mutate()} disabled={!form.collectorName.trim() || !form.quote.trim() || createMutation.isPending} className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-8 px-4" data-testid="button-testimonial-save">
+              {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />} Save
+            </Button>
+            <Button variant="ghost" onClick={() => setShowForm(false)} className="text-[#B3B3B8] text-xs border border-white/10 px-3 h-8">Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 text-[#5D3FD3] animate-spin" /></div>
+      ) : items.length === 0 ? (
+        <p className="text-[#B3B3B8]/30 text-sm py-6" data-testid="text-no-testimonials">No testimonials yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => (
+            <div key={item.id} className="p-4 rounded-md bg-[#141416] border border-white/5" data-testid={`row-testimonial-${item.id}`}>
+              {editing?.id === item.id ? (
+                <div className="space-y-3">
+                  <Input value={editing.collectorName} onChange={(e) => setEditing((t) => t ? { ...t, collectorName: e.target.value } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
+                  <Input value={editing.location || ""} onChange={(e) => setEditing((t) => t ? { ...t, location: e.target.value } : t)} placeholder="Location" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
+                  <Textarea value={editing.quote} onChange={(e) => setEditing((t) => t ? { ...t, quote: e.target.value } : t)} rows={3} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm resize-none" />
+                  <div className="flex items-center gap-2">
+                    <Input type="number" value={editing.displayOrder} onChange={(e) => setEditing((t) => t ? { ...t, displayOrder: parseInt(e.target.value) || 0 } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-24" />
+                    <label className="text-[#B3B3B8]/50 text-xs ml-auto">Active</label>
+                    <Switch checked={editing.active} onCheckedChange={(v) => setEditing((t) => t ? { ...t, active: v } : t)} />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button onClick={() => updateMutation.mutate({ id: editing.id, collectorName: editing.collectorName, location: editing.location || "", quote: editing.quote, displayOrder: editing.displayOrder, active: editing.active })} disabled={updateMutation.isPending} className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-8 px-4">
+                      {updateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+                    </Button>
+                    <Button variant="ghost" onClick={() => setEditing(null)} className="text-[#B3B3B8] text-xs border border-white/10 px-3 h-8">Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-[#F5F5F7] text-sm font-medium">{item.collectorName}</p>
+                      {item.location && <span className="text-[#B3B3B8]/40 text-xs">— {item.location}</span>}
+                      {!item.active && <Badge className="bg-gray-500/20 text-gray-400 border-0 no-default-hover-elevate no-default-active-elevate text-[10px]">Inactive</Badge>}
+                    </div>
+                    <p className="text-[#B3B3B8]/60 text-xs line-clamp-2 italic">"{item.quote}"</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-[#B3B3B8]/40 hover:text-[#F5F5F7]" onClick={() => toggleActive(item)} title={item.active ? "Deactivate" : "Activate"} data-testid={`button-testimonial-toggle-${item.id}`}>
+                      {item.active ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-[#B3B3B8]/40 hover:text-[#F5F5F7]" onClick={() => setEditing(item)} data-testid={`button-testimonial-edit-${item.id}`}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400/60 hover:text-red-400" onClick={() => deleteMutation.mutate(item.id)} data-testid={`button-testimonial-delete-${item.id}`}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ExhibitionItem {
+  id: number;
+  venueName: string;
+  city: string;
+  year: number;
+  showName: string;
+  showType: string;
+  displayOrder: number;
+  createdAt: string;
+}
+
+function ExhibitionsAdmin({ toast }: { toast: any }) {
+  const { data: items = [], isLoading } = useQuery<ExhibitionItem[]>({
+    queryKey: ["/api/exhibitions"],
+  });
+
+  const [editing, setEditing] = useState<ExhibitionItem | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ venueName: "", city: "", year: new Date().getFullYear(), showName: "", showType: "Group", displayOrder: 0 });
+
+  const createMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/exhibitions", form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/exhibitions"] });
+      setShowForm(false);
+      setForm({ venueName: "", city: "", year: new Date().getFullYear(), showName: "", showType: "Group", displayOrder: 0 });
+      toast({ title: "Exhibition added" });
+    },
+    onError: () => toast({ title: "Failed to add", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { id: number } & typeof form) =>
+      apiRequest("PATCH", `/api/exhibitions/${data.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/exhibitions"] });
+      setEditing(null);
+      toast({ title: "Exhibition updated" });
+    },
+    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/exhibitions/${id}`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/exhibitions"] });
+      toast({ title: "Exhibition deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+  });
+
+  const showTypes = ["Solo", "Group", "Juried", "Invitational"];
+
+  return (
+    <div data-testid="section-exhibitions-admin">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50">Exhibition History</p>
+          <p className="text-[#B3B3B8]/30 text-xs mt-0.5">Shown on the about page, ordered by year (newest first).</p>
+        </div>
+        <Button
+          onClick={() => setShowForm(true)}
+          className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-8 px-3"
+          data-testid="button-add-exhibition"
+        >
+          <Plus className="w-3.5 h-3.5 mr-1" /> Add
+        </Button>
+      </div>
+
+      {showForm && (
+        <div className="p-5 rounded-md bg-[#141416] border border-white/10 mb-4 space-y-3">
+          <p className="text-[#C084FC] text-xs uppercase tracking-[0.2em] font-semibold">New Exhibition</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input value={form.venueName} onChange={(e) => setForm((f) => ({ ...f, venueName: e.target.value }))} placeholder="Venue name *" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-exhibition-venue" />
+            <Input value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} placeholder="City *" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-exhibition-city" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input value={form.showName} onChange={(e) => setForm((f) => ({ ...f, showName: e.target.value }))} placeholder="Show / exhibit name *" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-exhibition-showname" />
+            <Input type="number" value={form.year} onChange={(e) => setForm((f) => ({ ...f, year: parseInt(e.target.value) || new Date().getFullYear() }))} placeholder="Year *" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-exhibition-year" />
+          </div>
+          <div className="flex items-center gap-3">
+            <Select value={form.showType} onValueChange={(v) => setForm((f) => ({ ...f, showType: v }))}>
+              <SelectTrigger className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-40" data-testid="select-exhibition-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {showTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input type="number" value={form.displayOrder} onChange={(e) => setForm((f) => ({ ...f, displayOrder: parseInt(e.target.value) || 0 }))} placeholder="Display order" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-32" data-testid="input-exhibition-order" />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button onClick={() => createMutation.mutate()} disabled={!form.venueName.trim() || !form.city.trim() || !form.showName.trim() || createMutation.isPending} className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-8 px-4" data-testid="button-exhibition-save">
+              {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />} Save
+            </Button>
+            <Button variant="ghost" onClick={() => setShowForm(false)} className="text-[#B3B3B8] text-xs border border-white/10 px-3 h-8">Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 text-[#5D3FD3] animate-spin" /></div>
+      ) : items.length === 0 ? (
+        <p className="text-[#B3B3B8]/30 text-sm py-6" data-testid="text-no-exhibitions">No exhibitions yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => (
+            <div key={item.id} className="p-4 rounded-md bg-[#141416] border border-white/5" data-testid={`row-exhibition-${item.id}`}>
+              {editing?.id === item.id ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input value={editing.venueName} onChange={(e) => setEditing((t) => t ? { ...t, venueName: e.target.value } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
+                    <Input value={editing.city} onChange={(e) => setEditing((t) => t ? { ...t, city: e.target.value } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input value={editing.showName} onChange={(e) => setEditing((t) => t ? { ...t, showName: e.target.value } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
+                    <Input type="number" value={editing.year} onChange={(e) => setEditing((t) => t ? { ...t, year: parseInt(e.target.value) || t.year } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
+                  </div>
+                  <Select value={editing.showType} onValueChange={(v) => setEditing((t) => t ? { ...t, showType: v } : t)}>
+                    <SelectTrigger className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>{showTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <div className="flex gap-2 pt-1">
+                    <Button onClick={() => updateMutation.mutate({ id: editing.id, venueName: editing.venueName, city: editing.city, year: editing.year, showName: editing.showName, showType: editing.showType, displayOrder: editing.displayOrder })} disabled={updateMutation.isPending} className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-8 px-4">
+                      {updateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+                    </Button>
+                    <Button variant="ghost" onClick={() => setEditing(null)} className="text-[#B3B3B8] text-xs border border-white/10 px-3 h-8">Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[#C084FC] text-sm font-semibold">{item.year}</span>
+                      <Badge className="bg-[#5D3FD3]/20 text-[#5D3FD3] border-0 no-default-hover-elevate no-default-active-elevate text-[10px]">{item.showType}</Badge>
+                    </div>
+                    <p className="text-[#F5F5F7] text-sm">{item.showName}</p>
+                    <p className="text-[#B3B3B8]/50 text-xs">{item.venueName} — {item.city}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-[#B3B3B8]/40 hover:text-[#F5F5F7]" onClick={() => setEditing(item)} data-testid={`button-exhibition-edit-${item.id}`}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400/60 hover:text-red-400" onClick={() => deleteMutation.mutate(item.id)} data-testid={`button-exhibition-delete-${item.id}`}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

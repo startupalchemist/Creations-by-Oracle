@@ -1,5 +1,5 @@
 import {
-  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry, commissions, artworkWaitlist, printOrders,
+  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry, commissions, artworkWaitlist, printOrders, testimonials, exhibitions,
   type Lead, type InsertLead,
   type User, type InsertUser,
   type Session,
@@ -24,6 +24,8 @@ import {
   type Commission,
   type ArtworkWaitlist,
   type PrintOrder,
+  type Testimonial, type InsertTestimonial,
+  type Exhibition, type InsertExhibition,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, gte, count, sum } from "drizzle-orm";
@@ -212,6 +214,20 @@ export interface IStorage {
   getPrintOrderById(id: number): Promise<PrintOrder | undefined>;
   getPrintOrderBySessionId(sessionId: string): Promise<PrintOrder | undefined>;
   updatePrintOrder(id: number, data: Partial<PrintOrder>): Promise<PrintOrder | undefined>;
+
+  // ─── Testimonials ─────────────────────────────────────────────────
+  getTestimonials(activeOnly?: boolean): Promise<Testimonial[]>;
+  getTestimonialById(id: number): Promise<Testimonial | undefined>;
+  createTestimonial(data: InsertTestimonial): Promise<Testimonial>;
+  updateTestimonial(id: number, data: Partial<Testimonial>): Promise<Testimonial | undefined>;
+  deleteTestimonial(id: number): Promise<void>;
+
+  // ─── Exhibitions ──────────────────────────────────────────────────
+  getExhibitions(): Promise<Exhibition[]>;
+  getExhibitionById(id: number): Promise<Exhibition | undefined>;
+  createExhibition(data: InsertExhibition): Promise<Exhibition>;
+  updateExhibition(id: number, data: Partial<Exhibition>): Promise<Exhibition | undefined>;
+  deleteExhibition(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -856,6 +872,57 @@ export class DatabaseStorage implements IStorage {
   async updatePrintOrder(id: number, data: Partial<PrintOrder>): Promise<PrintOrder | undefined> {
     const [result] = await db.update(printOrders).set(data).where(eq(printOrders.id, id)).returning();
     return result;
+  }
+
+  // ─── Testimonials ─────────────────────────────────────────────────────────────
+  async getTestimonials(activeOnly = false): Promise<Testimonial[]> {
+    if (activeOnly) {
+      return db.select().from(testimonials).where(eq(testimonials.active, true)).orderBy(testimonials.displayOrder);
+    }
+    return db.select().from(testimonials).orderBy(testimonials.displayOrder);
+  }
+
+  async getTestimonialById(id: number): Promise<Testimonial | undefined> {
+    const [result] = await db.select().from(testimonials).where(eq(testimonials.id, id));
+    return result;
+  }
+
+  async createTestimonial(data: InsertTestimonial): Promise<Testimonial> {
+    const [result] = await db.insert(testimonials).values(data).returning();
+    return result;
+  }
+
+  async updateTestimonial(id: number, data: Partial<Testimonial>): Promise<Testimonial | undefined> {
+    const [result] = await db.update(testimonials).set(data).where(eq(testimonials.id, id)).returning();
+    return result;
+  }
+
+  async deleteTestimonial(id: number): Promise<void> {
+    await db.delete(testimonials).where(eq(testimonials.id, id));
+  }
+
+  // ─── Exhibitions ──────────────────────────────────────────────────────────────
+  async getExhibitions(): Promise<Exhibition[]> {
+    return db.select().from(exhibitions).orderBy(desc(exhibitions.year), exhibitions.displayOrder);
+  }
+
+  async getExhibitionById(id: number): Promise<Exhibition | undefined> {
+    const [result] = await db.select().from(exhibitions).where(eq(exhibitions.id, id));
+    return result;
+  }
+
+  async createExhibition(data: InsertExhibition): Promise<Exhibition> {
+    const [result] = await db.insert(exhibitions).values(data).returning();
+    return result;
+  }
+
+  async updateExhibition(id: number, data: Partial<Exhibition>): Promise<Exhibition | undefined> {
+    const [result] = await db.update(exhibitions).set(data).where(eq(exhibitions.id, id)).returning();
+    return result;
+  }
+
+  async deleteExhibition(id: number): Promise<void> {
+    await db.delete(exhibitions).where(eq(exhibitions.id, id));
   }
 }
 
