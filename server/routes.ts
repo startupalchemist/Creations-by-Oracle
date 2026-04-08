@@ -3087,7 +3087,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
               commission = await storage.getCommissionById(commissionId);
             }
           }
-          if (commission && commission.status === "final_sent") {
+          if (commission && commission.status === "final_sent" && session.payment_status === "paid") {
             try {
               await storage.updateCommission(commission.id, {
                 status: "complete",
