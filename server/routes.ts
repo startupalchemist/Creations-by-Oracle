@@ -145,10 +145,13 @@ export async function registerRoutes(
 
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({ message: "Email and password required" });
-      }
+      const loginSchema = z.object({
+        email: z.string().email("Valid email required"),
+        password: z.string().min(1, "Password required"),
+      });
+      const parsed = loginSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Email and password required" });
+      const { email, password } = parsed.data;
       const user = await storage.getUserByEmail(email);
       if (!user) {
         return res.status(401).json({ message: "Invalid credentials" });
@@ -1338,10 +1341,13 @@ Respond in JSON format:
 
   app.post("/api/subscribers", async (req, res) => {
     try {
-      const { name, email } = req.body;
-      if (!email) {
-        return res.status(400).json({ message: "Email is required" });
-      }
+      const subscriberSchema = z.object({
+        email: z.string().email("Valid email is required"),
+        name: z.string().nullable().optional(),
+      });
+      const parsed = subscriberSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Email is required" });
+      const { name, email } = parsed.data;
       const existing = await storage.getSubscriberByEmail(email);
       if (existing) {
         if (existing.status === "unsubscribed") {
@@ -1946,10 +1952,10 @@ Respond in JSON format:
 
   app.post("/api/services", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { title } = req.body;
-      if (!title || typeof title !== "string" || !title.trim()) {
-        return res.status(400).json({ message: "Title is required" });
-      }
+      const serviceCreateSchema = z.object({ title: z.string().min(1, "Title is required") });
+      const parsed = serviceCreateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Title is required" });
+      const { title } = parsed.data;
       const all = await storage.getServices();
       const maxOrder = all.length > 0 ? Math.max(...all.map(s => s.displayOrder)) : -1;
       const service = await storage.createService({
