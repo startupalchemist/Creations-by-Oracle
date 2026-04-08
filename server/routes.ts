@@ -1476,17 +1476,28 @@ Respond in JSON format:
   app.patch("/api/webhooks/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const webhookPatchSchema = z.object({
+        name: z.string().min(1).optional(),
+        url: z.string().url("Must be a valid URL").optional(),
+        events: z.array(z.string()).optional(),
+        active: z.boolean().optional(),
+        secret: z.string().optional(),
+      });
+      const parsed = webhookPatchSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const updates: Record<string, any> = {};
-      if (req.body.name !== undefined) updates.name = req.body.name;
-      if (req.body.url !== undefined) updates.url = req.body.url;
-      if (req.body.events !== undefined) updates.events = req.body.events;
-      if (typeof req.body.active === "boolean") updates.active = req.body.active;
-      if (req.body.secret !== undefined) updates.secret = req.body.secret;
+      if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+      if (parsed.data.url !== undefined) updates.url = parsed.data.url;
+      if (parsed.data.events !== undefined) updates.events = parsed.data.events;
+      if (typeof parsed.data.active === "boolean") updates.active = parsed.data.active;
+      if (parsed.data.secret !== undefined) updates.secret = parsed.data.secret;
 
       const hook = await storage.updateWebhook(id, updates);
       if (!hook) return res.status(404).json({ message: "Webhook not found" });
       res.json(hook);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to update webhook" });
     }
   });
@@ -2588,11 +2599,24 @@ Generate only the requested fields. Respond in this exact JSON format:
 
   app.post("/api/print-checkout", async (req, res) => {
     try {
-      const { artworkId, variantId, buyerName, buyerEmail, shippingAddress } = req.body;
-      if (!artworkId || !variantId || !buyerName || !buyerEmail) {
-        return res.status(400).json({ message: "Missing required fields" });
-      }
-      const artwork = await storage.getArtworkById(parseInt(artworkId));
+      const printCheckoutSchema = z.object({
+        artworkId: z.union([z.number().int().positive(), z.string().regex(/^\d+$/).transform(Number)]),
+        variantId: z.union([z.number(), z.string()]).transform(String),
+        buyerName: z.string().min(1, "Buyer name is required"),
+        buyerEmail: z.string().email("Invalid email address"),
+        shippingAddress: z.object({
+          name: z.string().optional(),
+          address1: z.string().optional(),
+          city: z.string().optional(),
+          state: z.string().optional(),
+          zip: z.string().optional(),
+          country: z.string().optional(),
+        }).nullable().optional(),
+      });
+      const parsed = printCheckoutSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const { artworkId, variantId, buyerName, buyerEmail, shippingAddress } = parsed.data;
+      const artwork = await storage.getArtworkById(artworkId as number);
       if (!artwork || !artwork.printsAvailable) {
         return res.status(400).json({ message: "Prints not available for this artwork" });
       }
@@ -3467,34 +3491,22 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
   app.post("/api/commissions", async (req, res) => {
     try {
-      const {
-        style, size, format, extraSubjects,
-        referenceImageUrls, notes,
-        customerName, customerEmail, customerPhone,
-      } = req.body;
-
-      const VALID_STYLES = ["Realism", "Fusion", "Oracle"] as const;
-      const VALID_SIZES = ["Small (8×10)", "Medium (11×14)", "Large (16×20)", "X-Large (18×24)", "XX-Large (24×36)", "XXX-Large (30×40+)"] as const;
-      const VALID_FORMATS = ["Digital", "Paper", "Canvas"] as const;
-
-      if (!style || !size || !format || !customerName || !customerEmail) {
-        return res.status(400).json({ message: "Missing required fields" });
+      const commissionBodySchema = z.object({
+        style: z.enum(["Realism", "Fusion", "Oracle"]),
+        size: z.enum(["Small (8×10)", "Medium (11×14)", "Large (16×20)", "X-Large (18×24)", "XX-Large (24×36)", "XXX-Large (30×40+)"]),
+        format: z.enum(["Digital", "Paper", "Canvas"]),
+        extraSubjects: z.number().int().min(0).optional().default(0),
+        referenceImageUrls: z.array(z.string()).max(5, "Maximum 5 reference images allowed").optional().default([]),
+        notes: z.string().nullable().optional(),
+        customerName: z.string().min(1, "Customer name is required"),
+        customerEmail: z.string().email("Invalid email address"),
+        customerPhone: z.string().nullable().optional(),
+      });
+      const parsed = commissionBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       }
-      if (!(VALID_STYLES as readonly string[]).includes(style)) {
-        return res.status(400).json({ message: "Invalid style" });
-      }
-      if (!(VALID_SIZES as readonly string[]).includes(size)) {
-        return res.status(400).json({ message: "Invalid size" });
-      }
-      if (!(VALID_FORMATS as readonly string[]).includes(format)) {
-        return res.status(400).json({ message: "Invalid format" });
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
-        return res.status(400).json({ message: "Invalid email address" });
-      }
-      if (Array.isArray(referenceImageUrls) && referenceImageUrls.length > 5) {
-        return res.status(400).json({ message: "Maximum 5 reference images allowed" });
-      }
+      const { style, size, format, extraSubjects, referenceImageUrls, notes, customerName, customerEmail, customerPhone } = parsed.data;
 
       // Load pricing matrix from settings
       const [matrixRaw, addonsRaw, subjectFeesRaw, depositPctRaw] = await Promise.all([

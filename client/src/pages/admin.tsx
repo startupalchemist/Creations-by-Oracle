@@ -1983,43 +1983,47 @@ function UsersTab({
         </div>
       </div>
 
-      {/* ── Active Sessions ── */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <Monitor className="w-4 h-4 text-[#B3B3B8]/50" />
-          <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 font-medium">{isRoot ? "All Active Sessions" : "My Active Sessions"}</p>
-        </div>
-        {sessionsLoading ? (
-          <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 text-[#5D3FD3] animate-spin" /></div>
-        ) : activeSessions.length === 0 ? (
-          <p className="text-sm text-[#B3B3B8]/40 py-4" data-testid="text-no-sessions">No active sessions.</p>
-        ) : (
-          <div className="space-y-2" data-testid="panel-active-sessions">
-            {activeSessions.map((s) => (
-              <div key={s.id} className="p-4 rounded-md bg-[#141416] border border-white/5 flex flex-wrap items-start justify-between gap-3" data-testid={`card-session-${s.id}`}>
-                <div className="min-w-0">
-                  {isRoot && s.user && (
-                    <p className="text-[#F5F5F7] text-sm font-medium">{s.user.name} <span className="text-[#B3B3B8]/40 font-normal">({s.user.role})</span></p>
-                  )}
-                  <p className="text-[#B3B3B8]/50 text-xs truncate max-w-xs" data-testid={`text-session-ua-${s.id}`}>{s.userAgent ? s.userAgent.substring(0, 80) : "Unknown browser"}</p>
-                  {isRoot && s.ipAddress && <p className="text-[#B3B3B8]/30 text-[10px]">IP: {s.ipAddress}</p>}
-                  <p className="text-[#B3B3B8]/30 text-[10px]">Created: {new Date(s.createdAt).toLocaleString()} · Expires: {new Date(s.expiresAt).toLocaleDateString()}</p>
+      {/* ── Active Sessions (root-only collapsible panel) ── */}
+      {isRoot && (
+        <details className="group" data-testid="panel-active-sessions-collapsible">
+          <summary className="flex items-center gap-2 cursor-pointer list-none mb-4">
+            <Monitor className="w-4 h-4 text-[#B3B3B8]/50" />
+            <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 font-medium">All Active Sessions</p>
+            <span className="ml-auto text-[10px] text-[#B3B3B8]/30 group-open:hidden">▶ expand</span>
+            <span className="ml-auto text-[10px] text-[#B3B3B8]/30 hidden group-open:inline">▼ collapse</span>
+          </summary>
+          {sessionsLoading ? (
+            <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 text-[#5D3FD3] animate-spin" /></div>
+          ) : activeSessions.length === 0 ? (
+            <p className="text-sm text-[#B3B3B8]/40 py-4" data-testid="text-no-sessions">No active sessions.</p>
+          ) : (
+            <div className="space-y-2" data-testid="panel-active-sessions">
+              {activeSessions.map((s) => (
+                <div key={s.id} className="p-4 rounded-md bg-[#141416] border border-white/5 flex flex-wrap items-start justify-between gap-3" data-testid={`card-session-${s.id}`}>
+                  <div className="min-w-0">
+                    {s.user && (
+                      <p className="text-[#F5F5F7] text-sm font-medium">{s.user.name} <span className="text-[#B3B3B8]/40 font-normal">({s.user.role})</span></p>
+                    )}
+                    <p className="text-[#B3B3B8]/50 text-xs truncate max-w-xs" data-testid={`text-session-ua-${s.id}`}>{s.userAgent ? s.userAgent.substring(0, 80) : "Unknown browser"}</p>
+                    {s.ipAddress && <p className="text-[#B3B3B8]/30 text-[10px]">IP: {s.ipAddress}</p>}
+                    <p className="text-[#B3B3B8]/30 text-[10px]">Created: {new Date(s.createdAt).toLocaleString()} · Expires: {new Date(s.expiresAt).toLocaleDateString()}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => revokeSession.mutate(s.id)}
+                    disabled={revokeSession.isPending}
+                    className="shrink-0"
+                    data-testid={`button-revoke-session-${s.id}`}
+                  >
+                    <ShieldX className="w-4 h-4 text-red-400" />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => revokeSession.mutate(s.id)}
-                  disabled={revokeSession.isPending}
-                  className="shrink-0"
-                  data-testid={`button-revoke-session-${s.id}`}
-                >
-                  <ShieldX className="w-4 h-4 text-red-400" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </details>
+      )}
 
       {/* ── Activity Log ── */}
       <div>
