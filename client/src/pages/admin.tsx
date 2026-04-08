@@ -5154,7 +5154,8 @@ interface TestimonialItem {
 
 function TestimonialsAdmin({ toast }: { toast: any }) {
   const { data: items = [], isLoading } = useQuery<TestimonialItem[]>({
-    queryKey: ["/api/testimonials"],
+    queryKey: ["/api/testimonials", "all"],
+    queryFn: () => fetch("/api/testimonials").then((r) => r.json()),
   });
 
   const { data: artworksList = [] } = useQuery<Artwork[]>({
@@ -5168,10 +5169,15 @@ function TestimonialsAdmin({ toast }: { toast: any }) {
 
   const resetForm = () => setForm({ collectorName: "", location: "", quote: "", artworkId: "", displayOrder: 0, active: true });
 
+  const invalidateTestimonials = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/testimonials", "all"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/testimonials", { active: true }] });
+  };
+
   const createMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/testimonials", { ...form, artworkId: form.artworkId ? parseInt(form.artworkId) : null }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/testimonials"] });
+      invalidateTestimonials();
       setShowForm(false);
       resetForm();
       toast({ title: "Testimonial added" });
@@ -5183,7 +5189,7 @@ function TestimonialsAdmin({ toast }: { toast: any }) {
     mutationFn: (data: { id: number; collectorName: string; location: string; quote: string; artworkId: number | null; displayOrder: number; active: boolean }) =>
       apiRequest("PATCH", `/api/testimonials/${data.id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/testimonials"] });
+      invalidateTestimonials();
       setEditing(null);
       toast({ title: "Testimonial updated" });
     },
@@ -5193,7 +5199,7 @@ function TestimonialsAdmin({ toast }: { toast: any }) {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/testimonials/${id}`, {}),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/testimonials"] });
+      invalidateTestimonials();
       toast({ title: "Testimonial deleted" });
     },
     onError: () => toast({ title: "Failed to delete", variant: "destructive" }),

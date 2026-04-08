@@ -18,7 +18,7 @@ interface Testimonial {
 
 function TestimonialsSection() {
   const { data: testimonials = [] } = useQuery<Testimonial[]>({
-    queryKey: ["/api/testimonials"],
+    queryKey: ["/api/testimonials", { active: true }],
     queryFn: () => fetch("/api/testimonials?active=true").then((r) => r.json()),
   });
 
