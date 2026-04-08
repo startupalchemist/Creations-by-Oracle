@@ -561,6 +561,7 @@ export const printOrders = pgTable("print_orders", {
   variantLabel: text("variant_label").notNull(),
   retailPrice: numeric("retail_price", { precision: 10, scale: 2 }).notNull(),
   printfulOrderId: text("printful_order_id"),
+  trackingNumber: text("tracking_number"),
   status: text("status").notNull().default("pending"),
   shippingAddress: text("shipping_address"),
   stripeSessionId: text("stripe_session_id"),
@@ -571,10 +572,11 @@ export const insertPrintOrderSchema = createInsertSchema(printOrders).omit({
   id: true,
   createdAt: true,
   printfulOrderId: true,
+  trackingNumber: true,
   status: true,
 });
 
 export type InsertPrintOrder = z.infer<typeof insertPrintOrderSchema>;
 export type PrintOrder = typeof printOrders.$inferSelect;
 
-export const printOrderStatuses = ["pending", "paid", "submitted", "fulfilled", "cancelled"] as const;
+export const printOrderStatuses = ["pending", "paid", "in_production", "shipped", "delivered", "cancelled"] as const;

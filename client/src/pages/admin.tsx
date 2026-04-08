@@ -67,6 +67,8 @@ import {
   Download,
   FileSpreadsheet,
   AlertCircle,
+  RefreshCw,
+  Package,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import TheDyno from "@/components/the-dyno";
@@ -4377,6 +4379,25 @@ function ShopTab({ toast }: { toast: any }) {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/artworks"] }); toast({ title: "Artwork deleted" }); },
   });
 
+  const [syncingId, setSyncingId] = useState<number | null>(null);
+  const syncPrintful = async (artworkId: number) => {
+    setSyncingId(artworkId);
+    try {
+      const res = await apiRequest("POST", `/api/artworks/${artworkId}/sync-printful`, {});
+      const json = await res.json();
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ["/api/artworks"] });
+        toast({ title: "Synced to Printful", description: `Product ID: ${json.printfulProductId}` });
+      } else {
+        toast({ title: "Sync failed", description: json.message || "Unknown error", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Sync failed", description: "Network error", variant: "destructive" });
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
   const uploadImage = async (base64: string, name: string) => {
     const r = await apiRequest("POST", "/api/upload", { imageData: base64, filename: name });
     const j = await r.json();
@@ -4640,6 +4661,22 @@ function ShopTab({ toast }: { toast: any }) {
                       <Globe className="w-3 h-3 mr-1" />Publish
                     </Button>
                   )}
+                  {artwork.printsAvailable && (
+                    <Button
+                      variant="ghost"
+                      className="text-[#C084FC] text-[10px] px-2 py-1 h-auto border border-[#C084FC]/20"
+                      onClick={() => syncPrintful(artwork.id)}
+                      disabled={syncingId === artwork.id}
+                      data-testid={`button-sync-printful-${artwork.id}`}
+                      title={artwork.printfulProductId ? `Synced (ID: ${artwork.printfulProductId})` : "Sync to Printful"}
+                    >
+                      {syncingId === artwork.id
+                        ? <RefreshCw className="w-3 h-3 animate-spin mr-1" />
+                        : <Package className="w-3 h-3 mr-1" />
+                      }
+                      {artwork.printfulProductId ? "Re-sync" : "Sync Printful"}
+                    </Button>
+                  )}
                   <Button variant="ghost" className="text-red-400 text-[10px] px-2 py-1 h-auto border border-red-500/20" onClick={() => { if (confirm("Delete artwork?")) deleteArtwork.mutate(artwork.id); }} data-testid={`button-delete-artwork-${artwork.id}`}>
                     <Trash2 className="w-3 h-3" />
                   </Button>
@@ -4692,6 +4729,25 @@ function OrdersTab({ toast }: { toast: any }) {
       toast({ title: "Print order updated" });
     },
   });
+
+  const [syncingOrderId, setSyncingOrderId] = useState<number | null>(null);
+  const syncPrintOrderStatus = async (id: number) => {
+    setSyncingOrderId(id);
+    try {
+      const res = await fetch(`/api/print-orders/${id}/sync-status`, { credentials: "include" });
+      const json = await res.json();
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ["/api/print-orders"] });
+        toast({ title: "Status synced", description: json.tracking_number ? `Tracking: ${json.tracking_number}` : `Status: ${json.status}` });
+      } else {
+        toast({ title: "Sync failed", description: json.message, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Sync failed", description: "Network error", variant: "destructive" });
+    } finally {
+      setSyncingOrderId(null);
+    }
+  };
 
   return (
     <div className="space-y-4" data-testid="tab-orders-content">
@@ -4789,8 +4845,9 @@ function OrdersTab({ toast }: { toast: any }) {
                   <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Buyer</th>
                   <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Amount</th>
                   <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Status</th>
-                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Printful #</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Tracking</th>
                   <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Date</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
@@ -4810,18 +4867,34 @@ function OrdersTab({ toast }: { toast: any }) {
                         value={po.status}
                         onValueChange={(v) => updatePrintOrder.mutate({ id: po.id, status: v })}
                       >
-                        <SelectTrigger className="h-7 text-[10px] bg-transparent border-white/10 w-28" data-testid={`select-print-status-${po.id}`}>
+                        <SelectTrigger className="h-7 text-[10px] bg-transparent border-white/10 w-32" data-testid={`select-print-status-${po.id}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-[#141416] border-white/10">
-                          {["pending", "paid", "submitted", "fulfilled", "cancelled"].map((s) => (
-                            <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                          {["pending", "paid", "in_production", "shipped", "delivered", "cancelled"].map((s) => (
+                            <SelectItem key={s} value={s} className="text-xs">{s.replace("_", " ")}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className="px-4 py-3 text-[#B3B3B8]/40 text-[10px]">{po.printfulOrderId || "—"}</td>
+                    <td className="px-4 py-3 text-[#B3B3B8]/50 text-[10px]" data-testid={`text-tracking-${po.id}`}>
+                      {po.trackingNumber || (po.printfulOrderId ? `PF#${po.printfulOrderId}` : "—")}
+                    </td>
                     <td className="px-4 py-3 text-[#B3B3B8]/40 text-xs">{po.createdAt ? new Date(po.createdAt).toLocaleDateString() : "—"}</td>
+                    <td className="px-4 py-3">
+                      {po.printfulOrderId && (
+                        <Button
+                          variant="ghost"
+                          className="text-[#B3B3B8]/50 text-[10px] px-2 py-1 h-auto border border-white/8"
+                          onClick={() => syncPrintOrderStatus(po.id)}
+                          disabled={syncingOrderId === po.id}
+                          data-testid={`button-sync-status-${po.id}`}
+                          title="Sync status from Printful"
+                        >
+                          {syncingOrderId === po.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

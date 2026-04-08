@@ -133,8 +133,6 @@ function PrintSection({ artwork }: { artwork: Artwork }) {
       apiRequest("POST", "/api/print-checkout", {
         artworkId: artwork.id,
         variantId: selectedVariant?.id,
-        variantLabel: selectedVariant?.label,
-        retailPrice: selectedVariant?.retailPrice,
         buyerName,
         buyerEmail,
         shippingAddress: { street: shippingStreet, city: shippingCity, state: shippingState, zip: shippingZip, country: shippingCountry },
@@ -249,9 +247,10 @@ function PrintSection({ artwork }: { artwork: Artwork }) {
             </div>
           )}
 
-          <p className="text-[#B3B3B8]/25 text-[10px]">
-            Printed and shipped by our fulfillment partner. Museum-quality archival paper and inks.
-          </p>
+          <div className="flex flex-col gap-1 pt-1">
+            <p className="text-[#B3B3B8]/40 text-[10px]">Ships within 5–7 business days. Museum-quality archival paper and inks.</p>
+            <p className="text-[#B3B3B8]/40 text-[10px]">Every print includes a limited edition certificate of authenticity signed by the artist.</p>
+          </div>
         </div>
       )}
     </div>

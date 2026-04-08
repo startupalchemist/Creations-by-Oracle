@@ -60,7 +60,7 @@ export async function createPrintfulProduct(
   imageUrl: string,
   variants: PrintfulSyncVariant[]
 ): Promise<{ id: number; name: string }> {
-  const result = await printfulRequest<{ result: { id: number; name: string } }>(
+  const result = await printfulRequest<{ result: { sync_product: { id: number; name: string } } }>(
     "POST",
     "/store/products",
     {
@@ -71,7 +71,33 @@ export async function createPrintfulProduct(
       sync_variants: variants,
     }
   );
-  return result.result;
+  return result.result.sync_product;
+}
+
+export async function getProductVariants(productId: string): Promise<PrintfulVariant[]> {
+  try {
+    const result = await printfulRequest<{
+      result: {
+        sync_product: { id: number; name: string };
+        sync_variants: {
+          id: number;
+          name: string;
+          retail_price: string;
+          currency: string;
+          preview_url?: string;
+        }[];
+      };
+    }>("GET", `/store/products/${productId}`);
+    return result.result.sync_variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      retail_price: v.retail_price,
+      currency: v.currency,
+      preview_url: v.preview_url,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function getPrintfulProduct(productId: string): Promise<PrintfulProduct | null> {
@@ -141,6 +167,33 @@ export async function createPrintfulOrder(params: {
   return result.result;
 }
 
+export async function getOrderStatus(printfulOrderId: string): Promise<{
+  id: number;
+  status: string;
+  tracking_number?: string;
+  tracking_url?: string;
+} | null> {
+  try {
+    const result = await printfulRequest<{
+      result: {
+        id: number;
+        status: string;
+        shipments?: { tracking_number?: string; tracking_url?: string }[];
+      };
+    }>("GET", `/orders/${printfulOrderId}`);
+    const trackingNumber = result.result.shipments?.[0]?.tracking_number;
+    const trackingUrl = result.result.shipments?.[0]?.tracking_url;
+    return {
+      id: result.result.id,
+      status: result.result.status,
+      tracking_number: trackingNumber,
+      tracking_url: trackingUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function getPrintfulStoreInfo(): Promise<{
   id: number;
   name: string;
@@ -168,3 +221,8 @@ export const PRINT_VARIANT_TEMPLATES: {
   { label: 'Canvas 16×20"', printfulVariantId: 3, baseCost: 35.0, description: "Gallery-wrapped canvas" },
   { label: 'Canvas 24×36"', printfulVariantId: 4, baseCost: 55.0, description: "Gallery-wrapped canvas" },
 ];
+
+export function computeVariantRetailPrice(baseCost: number, markupPercent: number): string {
+  const retail = baseCost * (1 + markupPercent / 100);
+  return retail.toFixed(2);
+}

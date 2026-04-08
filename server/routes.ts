@@ -9,7 +9,7 @@ import { authMiddleware, requireRole, hashPassword, verifyPassword, createSessio
 import crypto from "crypto";
 import OpenAI from "openai";
 import { getResendClient } from "./resend";
-import { isPrintfulConfigured, getPrintfulStoreInfo, getPrintfulProduct, createPrintfulOrder, PRINT_VARIANT_TEMPLATES } from "./printful";
+import { isPrintfulConfigured, getPrintfulStoreInfo, getPrintfulProduct, getProductVariants, createPrintfulProduct, createPrintfulOrder, getOrderStatus, PRINT_VARIANT_TEMPLATES, computeVariantRetailPrice } from "./printful";
 
 async function fireWebhooks(event: string, payload: Record<string, any>) {
   try {
@@ -2319,11 +2319,10 @@ Generate only the requested fields. Respond in this exact JSON format:
       if (!artwork) return res.status(404).json({ message: "Not found" });
       if (!artwork.printsAvailable) return res.json({ available: false, variants: [] });
 
-      // If artwork has a Printful product linked, fetch live variants
+      // If artwork has a Printful product linked, fetch live variants (retail_price already includes markup)
       if (artwork.printfulProductId && isPrintfulConfigured()) {
         const product = await getPrintfulProduct(artwork.printfulProductId);
         if (product) {
-          const markup = (artwork.printMarkupPercent ?? 40) / 100;
           const variants = product.variants.map((v) => ({
             id: String(v.id),
             label: v.name,
@@ -2352,15 +2351,81 @@ Generate only the requested fields. Respond in this exact JSON format:
     }
   });
 
+  // POST /api/artworks/:id/sync-printful — sync artwork to Printful (create/update product)
+  app.post("/api/artworks/:id/sync-printful", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid artwork ID" });
+
+      if (!isPrintfulConfigured()) {
+        return res.status(400).json({ message: "Printful API key not configured" });
+      }
+
+      const artwork = await storage.getArtworkById(id);
+      if (!artwork) return res.status(404).json({ message: "Artwork not found" });
+
+      // Build image URL
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DEPLOYMENT_URL
+        ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+        : "http://localhost:5000";
+      const imageUrl = artwork.imageUrl
+        ? artwork.imageUrl.startsWith("http")
+          ? artwork.imageUrl
+          : `${baseUrl}${artwork.imageUrl}`
+        : "";
+
+      if (!imageUrl) {
+        return res.status(400).json({ message: "Artwork has no image URL to sync" });
+      }
+
+      // Create product on Printful with template variants
+      const variants = PRINT_VARIANT_TEMPLATES.map((t) => ({
+        variant_id: t.printfulVariantId,
+        retail_price: computeVariantRetailPrice(t.baseCost, artwork.printMarkupPercent ?? 40),
+        files: [{ type: "default", url: imageUrl }],
+      }));
+
+      const product = await createPrintfulProduct(artwork.title, imageUrl, variants);
+
+      // Save printfulProductId back to artwork
+      await storage.updateArtwork(id, { printfulProductId: String(product.id) });
+
+      res.json({ success: true, printfulProductId: String(product.id), productName: product.name });
+    } catch (e: any) {
+      res.status(500).json({ message: "Failed to sync to Printful", error: e?.message });
+    }
+  });
+
   app.post("/api/print-checkout", async (req, res) => {
     try {
-      const { artworkId, variantId, variantLabel, retailPrice, buyerName, buyerEmail, shippingAddress } = req.body;
-      if (!artworkId || !variantId || !buyerName || !buyerEmail || !retailPrice) {
+      const { artworkId, variantId, buyerName, buyerEmail, shippingAddress } = req.body;
+      if (!artworkId || !variantId || !buyerName || !buyerEmail) {
         return res.status(400).json({ message: "Missing required fields" });
       }
       const artwork = await storage.getArtworkById(parseInt(artworkId));
       if (!artwork || !artwork.printsAvailable) {
         return res.status(400).json({ message: "Prints not available for this artwork" });
+      }
+
+      // ── Server-side price resolution (never trust client-supplied price) ──
+      let resolvedPrice: string;
+      let resolvedLabel: string;
+
+      if (artwork.printfulProductId && isPrintfulConfigured()) {
+        // Use Printful live variants
+        const liveVariants = await getProductVariants(artwork.printfulProductId);
+        const match = liveVariants.find((v) => String(v.id) === String(variantId));
+        if (!match) return res.status(400).json({ message: "Variant not found for this artwork" });
+        resolvedPrice = match.retail_price;
+        resolvedLabel = match.name;
+      } else {
+        // Use template variants with server-side markup applied
+        const templateMatch = PRINT_VARIANT_TEMPLATES.find((t) => String(t.printfulVariantId) === String(variantId));
+        if (!templateMatch) return res.status(400).json({ message: "Variant not found" });
+        resolvedPrice = computeVariantRetailPrice(templateMatch.baseCost, artwork.printMarkupPercent ?? 40);
+        resolvedLabel = templateMatch.label;
       }
 
       const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -2370,7 +2435,7 @@ Generate only the requested fields. Respond in this exact JSON format:
 
       const Stripe = require("stripe");
       const stripe = new Stripe(stripeKey);
-      const amountCents = Math.round(parseFloat(retailPrice) * 100);
+      const amountCents = Math.round(parseFloat(resolvedPrice) * 100);
 
       const baseUrl = process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
@@ -2385,8 +2450,8 @@ Generate only the requested fields. Respond in this exact JSON format:
             price_data: {
               currency: "usd",
               product_data: {
-                name: `${artwork.title} — ${variantLabel} (Print)`,
-                description: `Fine art print of "${artwork.title}" by Oracle`,
+                name: `${artwork.title} — ${resolvedLabel} (Limited Edition Print)`,
+                description: `Fine art print of "${artwork.title}" by Oracle. Ships within 5–7 business days. Includes limited edition certificate of authenticity.`,
                 images: artwork.imageUrl ? [artwork.imageUrl.startsWith("http") ? artwork.imageUrl : `${baseUrl}${artwork.imageUrl}`] : [],
               },
               unit_amount: amountCents,
@@ -2401,8 +2466,8 @@ Generate only the requested fields. Respond in this exact JSON format:
         metadata: {
           artworkId: String(artworkId),
           variantId: String(variantId),
-          variantLabel,
-          retailPrice: String(retailPrice),
+          variantLabel: resolvedLabel,
+          retailPrice: resolvedPrice,
           buyerName,
           buyerEmail,
           orderType: "print",
@@ -2414,10 +2479,10 @@ Generate only the requested fields. Respond in this exact JSON format:
         artworkId: parseInt(artworkId),
         buyerName,
         buyerEmail,
-        printfulProductId: artwork.printfulProductId || "manual",
+        printfulProductId: artwork.printfulProductId || "template",
         variantId: String(variantId),
-        variantLabel,
-        retailPrice: String(parseFloat(retailPrice).toFixed(2)),
+        variantLabel: resolvedLabel,
+        retailPrice: resolvedPrice,
         shippingAddress: shippingAddress ? JSON.stringify(shippingAddress) : undefined,
         stripeSessionId: session.id,
       });
@@ -2440,15 +2505,50 @@ Generate only the requested fields. Respond in this exact JSON format:
   app.patch("/api/print-orders/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { status, printfulOrderId } = req.body;
+      const { status, printfulOrderId, trackingNumber } = req.body;
       const updates: Record<string, any> = {};
       if (status) updates.status = status;
       if (printfulOrderId) updates.printfulOrderId = printfulOrderId;
+      if (trackingNumber !== undefined) updates.trackingNumber = trackingNumber;
       const order = await storage.updatePrintOrder(id, updates);
       if (!order) return res.status(404).json({ message: "Print order not found" });
       res.json(order);
     } catch {
       res.status(500).json({ message: "Failed to update print order" });
+    }
+  });
+
+  // GET /api/print-orders/:id/sync-status — fetch latest status from Printful
+  app.get("/api/print-orders/:id/sync-status", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const orders = await storage.getPrintOrders();
+      const order = orders.find((o) => o.id === id);
+      if (!order) return res.status(404).json({ message: "Print order not found" });
+      if (!order.printfulOrderId) return res.status(400).json({ message: "No Printful order ID on this record" });
+      if (!isPrintfulConfigured()) return res.status(400).json({ message: "Printful not configured" });
+
+      const pf = await getOrderStatus(order.printfulOrderId);
+      if (!pf) return res.status(404).json({ message: "Printful order not found" });
+
+      // Map Printful status to our status
+      const statusMap: Record<string, string> = {
+        draft: "paid",
+        pending: "paid",
+        inprocess: "in_production",
+        onhold: "in_production",
+        fulfilled: "shipped",
+        archived: "delivered",
+      };
+      const mappedStatus = statusMap[pf.status] ?? pf.status;
+
+      const updates: Record<string, any> = { status: mappedStatus };
+      if (pf.tracking_number) updates.trackingNumber = pf.tracking_number;
+      await storage.updatePrintOrder(id, updates);
+
+      res.json({ status: mappedStatus, tracking_number: pf.tracking_number, tracking_url: pf.tracking_url });
+    } catch (e: any) {
+      res.status(500).json({ message: "Failed to sync order status", error: e?.message });
     }
   });
 
