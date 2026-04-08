@@ -11,6 +11,24 @@ import OpenAI from "openai";
 import { getResendClient } from "./resend";
 import { isPrintfulConfigured, getPrintfulStoreInfo, getPrintfulProduct, getProductVariants, createPrintfulProduct, createPrintfulOrder, getOrderStatus, PRINT_SIZE_TEMPLATES, computeVariantRetailPrice } from "./printful";
 
+// Normalize country name/code to ISO 3166-1 alpha-2 code for Printful API
+function normalizeCountryCode(country: string | undefined): string {
+  if (!country) return "US";
+  const c = country.trim();
+  if (c.length === 2) return c.toUpperCase();
+  const map: Record<string, string> = {
+    "united states": "US", "usa": "US", "u.s.a.": "US", "us": "US",
+    "canada": "CA", "united kingdom": "GB", "uk": "GB", "great britain": "GB",
+    "australia": "AU", "germany": "DE", "france": "FR", "spain": "ES",
+    "italy": "IT", "netherlands": "NL", "belgium": "BE", "sweden": "SE",
+    "norway": "NO", "denmark": "DK", "finland": "FI", "switzerland": "CH",
+    "austria": "AT", "portugal": "PT", "ireland": "IE", "new zealand": "NZ",
+    "japan": "JP", "south korea": "KR", "china": "CN", "singapore": "SG",
+    "mexico": "MX", "brazil": "BR", "argentina": "AR",
+  };
+  return map[c.toLowerCase()] ?? c.slice(0, 2).toUpperCase();
+}
+
 async function fireWebhooks(event: string, payload: Record<string, any>) {
   try {
     const hooks = await storage.getActiveWebhooksForEvent(event);
@@ -2974,7 +2992,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
                         city: addr.city,
                         state_code: addr.state || "NY",
                         zip: addr.zip,
-                        country_code: addr.country === "United States" ? "US" : (addr.country || "US"),
+                        country_code: normalizeCountryCode(addr.country),
                         email: printOrder.buyerEmail,
                       },
                     });
