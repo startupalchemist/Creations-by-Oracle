@@ -53,8 +53,8 @@ export interface IStorage {
   deleteExpiredSessions(): Promise<void>;
 
   createActivityLog(data: { actorId: number; actionType: string; entityType?: string; entityId?: string; summary: string }): Promise<AdminActivityLog>;
-  getActivityLogs(limit?: number, offset?: number): Promise<AdminActivityLog[]>;
-  getActivityLogCount(): Promise<number>;
+  getActivityLogs(limit?: number, offset?: number, actorId?: number, actionType?: string): Promise<AdminActivityLog[]>;
+  getActivityLogCount(actorId?: number, actionType?: string): Promise<number>;
 
   createPost(post: InsertPost & { authorId: number }): Promise<Post>;
   getPosts(status?: string): Promise<Post[]>;
@@ -318,11 +318,24 @@ export class DatabaseStorage implements IStorage {
     }).returning();
     return result;
   }
-  async getActivityLogs(limit = 50, offset = 0): Promise<AdminActivityLog[]> {
-    return db.select().from(adminActivityLog).orderBy(desc(adminActivityLog.createdAt)).limit(limit).offset(offset);
+  async getActivityLogs(limit = 50, offset = 0, actorId?: number, actionType?: string): Promise<AdminActivityLog[]> {
+    const conditions = [];
+    if (actorId !== undefined) conditions.push(eq(adminActivityLog.actorId, actorId));
+    if (actionType) conditions.push(eq(adminActivityLog.actionType, actionType));
+    const query = db.select().from(adminActivityLog);
+    if (conditions.length > 0) {
+      return query.where(and(...conditions)).orderBy(desc(adminActivityLog.createdAt)).limit(limit).offset(offset);
+    }
+    return query.orderBy(desc(adminActivityLog.createdAt)).limit(limit).offset(offset);
   }
-  async getActivityLogCount(): Promise<number> {
-    const [result] = await db.select({ count: count() }).from(adminActivityLog);
+  async getActivityLogCount(actorId?: number, actionType?: string): Promise<number> {
+    const conditions = [];
+    if (actorId !== undefined) conditions.push(eq(adminActivityLog.actorId, actorId));
+    if (actionType) conditions.push(eq(adminActivityLog.actionType, actionType));
+    const query = conditions.length > 0
+      ? db.select({ count: count() }).from(adminActivityLog).where(and(...conditions))
+      : db.select({ count: count() }).from(adminActivityLog);
+    const [result] = await query;
     return result?.count ?? 0;
   }
 

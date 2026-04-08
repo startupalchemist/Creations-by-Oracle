@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertLeadSchema, insertWebhookSchema, leadStatuses, webhookEvents, insertArtworkSchema, artworkCategories, artworkStatuses, insertPostSchema, insertTestimonialSchema, type Commission } from "@shared/schema";
+import { insertLeadSchema, insertWebhookSchema, leadStatuses, webhookEvents, insertArtworkSchema, artworkCategories, artworkStatuses, insertPostSchema, insertTestimonialSchema, insertExhibitionSchema, insertGallerySectionSchema, insertGalleryItemSchema, type Commission } from "@shared/schema";
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
@@ -301,23 +301,16 @@ export async function registerRoutes(
       const actorIdFilter = req.query.actorId ? parseInt(String(req.query.actorId)) : undefined;
       const actionTypeFilter = req.query.actionType ? String(req.query.actionType) : undefined;
 
-      const [allLogs, usersAll] = await Promise.all([
-        storage.getActivityLogs(1000, 0),
+      const validActorId = actorIdFilter && !isNaN(actorIdFilter) ? actorIdFilter : undefined;
+
+      const [logs, total, usersAll] = await Promise.all([
+        storage.getActivityLogs(limit, offset, validActorId, actionTypeFilter),
+        storage.getActivityLogCount(validActorId, actionTypeFilter),
         storage.getUsers(),
       ]);
 
       const userMap = new Map(usersAll.map(u => [u.id, { id: u.id, name: u.name, email: u.email, role: u.role }]));
-      let filtered = allLogs;
-      if (actorIdFilter && !isNaN(actorIdFilter)) {
-        filtered = filtered.filter(l => l.actorId === actorIdFilter);
-      }
-      if (actionTypeFilter) {
-        filtered = filtered.filter(l => l.actionType === actionTypeFilter);
-      }
-
-      const total = filtered.length;
-      const paginated = filtered.slice(offset, offset + limit);
-      const enriched = paginated.map(l => ({ ...l, actor: userMap.get(l.actorId) || null }));
+      const enriched = logs.map(l => ({ ...l, actor: userMap.get(l.actorId) || null }));
       res.json({ logs: enriched, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
     } catch {
       res.status(500).json({ message: "Failed to fetch activity log" });
@@ -2090,17 +2083,18 @@ Generate only the requested fields. Respond in this exact JSON format:
 
   app.post("/api/gallery/sections", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { name, displayOrder, isActive } = req.body;
-      if (!name) {
-        return res.status(400).json({ message: "Section name is required" });
-      }
+      const bodySchema = insertGallerySectionSchema.extend({ name: z.string().min(1, "Section name is required") });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const { name, displayOrder, isActive } = parsed.data;
       const section = await storage.createGallerySection({
         name,
         displayOrder: typeof displayOrder === "number" ? displayOrder : 0,
         isActive: isActive !== false,
       });
       res.status(201).json(section);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to create gallery section" });
     }
   });
@@ -2109,14 +2103,17 @@ Generate only the requested fields. Respond in this exact JSON format:
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const parsed = insertGallerySectionSchema.partial().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const updates: Record<string, any> = {};
-      if (req.body.name !== undefined) updates.name = req.body.name;
-      if (typeof req.body.displayOrder === "number") updates.displayOrder = req.body.displayOrder;
-      if (typeof req.body.isActive === "boolean") updates.isActive = req.body.isActive;
+      if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+      if (typeof parsed.data.displayOrder === "number") updates.displayOrder = parsed.data.displayOrder;
+      if (typeof parsed.data.isActive === "boolean") updates.isActive = parsed.data.isActive;
       const section = await storage.updateGallerySection(id, updates);
       if (!section) return res.status(404).json({ message: "Section not found" });
       res.json(section);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to update gallery section" });
     }
   });
@@ -2136,12 +2133,16 @@ Generate only the requested fields. Respond in this exact JSON format:
 
   app.post("/api/gallery/items", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { sectionId, src, alt, badge, displayOrder, isActive } = req.body;
-      if (!sectionId || !src || !alt) {
-        return res.status(400).json({ message: "sectionId, src, and alt are required" });
-      }
+      const bodySchema = insertGalleryItemSchema.extend({
+        sectionId: z.number().int().positive("sectionId is required"),
+        src: z.string().min(1, "src is required"),
+        alt: z.string().min(1, "alt is required"),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const { sectionId, src, alt, badge, displayOrder, isActive } = parsed.data;
       const item = await storage.createGalleryItem({
-        sectionId: parseInt(sectionId),
+        sectionId,
         src,
         alt,
         badge: badge || null,
@@ -2149,7 +2150,8 @@ Generate only the requested fields. Respond in this exact JSON format:
         isActive: isActive !== false,
       });
       res.status(201).json(item);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to create gallery item" });
     }
   });
@@ -2158,17 +2160,20 @@ Generate only the requested fields. Respond in this exact JSON format:
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const parsed = insertGalleryItemSchema.partial().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const updates: Record<string, any> = {};
-      if (req.body.src !== undefined) updates.src = req.body.src;
-      if (req.body.alt !== undefined) updates.alt = req.body.alt;
-      if (req.body.badge !== undefined) updates.badge = req.body.badge || null;
-      if (typeof req.body.displayOrder === "number") updates.displayOrder = req.body.displayOrder;
-      if (typeof req.body.isActive === "boolean") updates.isActive = req.body.isActive;
-      if (typeof req.body.sectionId === "number") updates.sectionId = req.body.sectionId;
+      if (parsed.data.src !== undefined) updates.src = parsed.data.src;
+      if (parsed.data.alt !== undefined) updates.alt = parsed.data.alt;
+      if (parsed.data.badge !== undefined) updates.badge = parsed.data.badge || null;
+      if (typeof parsed.data.displayOrder === "number") updates.displayOrder = parsed.data.displayOrder;
+      if (typeof parsed.data.isActive === "boolean") updates.isActive = parsed.data.isActive;
+      if (typeof parsed.data.sectionId === "number") updates.sectionId = parsed.data.sectionId;
       const item = await storage.updateGalleryItem(id, updates);
       if (!item) return res.status(404).json({ message: "Item not found" });
       res.json(item);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to update gallery item" });
     }
   });
@@ -3855,20 +3860,28 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
   app.post("/api/exhibitions", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { venueName, city, year, showName, showType, displayOrder } = req.body;
-      if (!venueName || !city || !year || !showName) {
-        return res.status(400).json({ message: "venueName, city, year, showName are required" });
+      const exhibitionBodySchema = insertExhibitionSchema.extend({
+        venueName: z.string().min(1, "Venue name is required"),
+        city: z.string().min(1, "City is required"),
+        year: z.number().int().min(1800).max(2100),
+        showName: z.string().min(1, "Show name is required"),
+      });
+      const parsed = exhibitionBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       }
+      const { venueName, city, year, showName, showType, displayOrder } = parsed.data;
       const item = await storage.createExhibition({
         venueName,
         city,
-        year: parseInt(year),
+        year,
         showName,
         showType: showType || "Group",
         displayOrder: displayOrder ?? 0,
       });
       res.status(201).json(item);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to create exhibition" });
     }
   });
@@ -3876,18 +3889,25 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
   app.patch("/api/exhibitions/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { venueName, city, year, showName, showType, displayOrder } = req.body;
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const patchSchema = insertExhibitionSchema.partial();
+      const parsed = patchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      }
+      const { venueName, city, year, showName, showType, displayOrder } = parsed.data;
       const updates: Record<string, any> = {};
       if (venueName !== undefined) updates.venueName = venueName;
       if (city !== undefined) updates.city = city;
-      if (year !== undefined) updates.year = parseInt(year);
+      if (year !== undefined) updates.year = year;
       if (showName !== undefined) updates.showName = showName;
       if (showType !== undefined) updates.showType = showType;
       if (displayOrder !== undefined) updates.displayOrder = displayOrder;
       const item = await storage.updateExhibition(id, updates);
       if (!item) return res.status(404).json({ message: "Exhibition not found" });
       res.json(item);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to update exhibition" });
     }
   });
