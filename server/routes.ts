@@ -3270,7 +3270,8 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       const matrix = matrixRaw ? JSON.parse(matrixRaw) : DEFAULT_COMMISSION_PRICE_MATRIX;
       const addons = addonsRaw ? JSON.parse(addonsRaw) : DEFAULT_COMMISSION_FORMAT_ADDONS;
       const subjectFees = subjectFeesRaw ? JSON.parse(subjectFeesRaw) : DEFAULT_COMMISSION_SUBJECT_FEES;
-      const depositPct = depositPctRaw ? parseInt(depositPctRaw) : 50;
+      const parsedDepositPct = depositPctRaw ? parseInt(depositPctRaw, 10) : NaN;
+      const depositPct = isNaN(parsedDepositPct) ? 50 : Math.max(1, Math.min(100, parsedDepositPct));
       const termsNote = termsNoteRaw || "";
 
       res.json({ matrix, addons, subjectFees, depositPct, termsNote });
@@ -3395,7 +3396,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(depositAmount * 100),
         currency: "usd",
-        description: `${style} Portrait Commission — ${size} (50% deposit)`,
+        description: `${style} Portrait Commission — ${size} (${depositPct}% deposit)`,
         receipt_email: customerEmail,
         metadata: {
           commissionType: "deposit",
