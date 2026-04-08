@@ -242,6 +242,30 @@ export async function registerRoutes(
       const lead = await storage.createLead(data);
       res.status(201).json(lead);
       fireWebhooks("lead.created", { id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, vehicle: lead.vehicle, insurance: lead.insurance, message: lead.message, status: lead.status, createdAt: lead.createdAt });
+      // Send inquiry notification email to artist (reply-to set to collector)
+      try {
+        const artistEmail = await storage.getSetting("artist_email");
+        if (artistEmail) {
+          const { client, fromEmail } = await getResendClient();
+          await client.emails.send({
+            from: fromEmail,
+            to: artistEmail,
+            replyTo: lead.email,
+            subject: `New Inquiry from ${lead.name}`,
+            html: buildInquiryEmail({
+              name: lead.name,
+              email: lead.email,
+              phone: lead.phone || undefined,
+              subject: lead.vehicle || undefined,
+              message: lead.message || undefined,
+              inquiryType: lead.insurance || undefined,
+            }),
+          });
+        }
+      } catch (emailErr: unknown) {
+        const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+        console.error("Inquiry notification email error:", msg);
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json({ message: "Invalid data", errors: error.errors });
@@ -2161,6 +2185,41 @@ Generate only the requested fields. Respond in this exact JSON format:
       if (!artwork) return res.status(404).json({ message: "Artwork not found" });
       if (updates.status === "published") {
         fireWebhooks("artwork.published", { id: artwork.id, title: artwork.title, slug: artwork.slug, category: artwork.category });
+        // Notify waitlist subscribers matching this artwork's category
+        if (artwork.category) {
+          try {
+            const waitlistEntries = await storage.getWaitlistByCategory(artwork.category);
+            if (waitlistEntries.length > 0) {
+              const baseUrl = process.env.REPLIT_DEV_DOMAIN
+                ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+                : process.env.REPLIT_DEPLOYMENT_URL
+                ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+                : "http://localhost:5000";
+              const artworkImage = artwork.imageUrl ? (artwork.imageUrl.startsWith("http") ? artwork.imageUrl : `${baseUrl}${artwork.imageUrl}`) : "";
+              const { client, fromEmail } = await getResendClient();
+              for (const entry of waitlistEntries) {
+                try {
+                  await client.emails.send({
+                    from: fromEmail,
+                    to: entry.email,
+                    subject: `New ${artwork.category} work available — ${artwork.title}`,
+                    html: buildWaitlistNotificationEmail({
+                      email: entry.email,
+                      artworkTitle: artwork.title,
+                      artworkImage,
+                      artworkSlug: artwork.slug || String(artwork.id),
+                      category: artwork.category,
+                      baseUrl,
+                    }),
+                  });
+                } catch (_) {}
+              }
+            }
+          } catch (wlErr: unknown) {
+            const msg = wlErr instanceof Error ? wlErr.message : String(wlErr);
+            console.error("Waitlist notification error:", msg);
+          }
+        }
       }
       res.json(artwork);
     } catch {
@@ -2186,6 +2245,48 @@ Generate only the requested fields. Respond in this exact JSON format:
       res.json({ ok: true });
     } catch {
       res.json({ ok: true });
+    }
+  });
+
+  // ─── Artwork Waitlist ──────────────────────────────────────────────────────
+
+  app.post("/api/waitlist", async (req, res) => {
+    try {
+      const { email, category, artworkId } = req.body;
+      if (!email || typeof email !== "string" || !email.includes("@")) {
+        return res.status(400).json({ message: "Valid email required" });
+      }
+      if (!category || typeof category !== "string") {
+        return res.status(400).json({ message: "Category required" });
+      }
+      const entry = await storage.createWaitlistEntry({
+        email: email.toLowerCase().trim(),
+        category: category.trim(),
+        artworkId: artworkId ? parseInt(artworkId) : null,
+      });
+      res.status(201).json(entry);
+    } catch {
+      res.status(500).json({ message: "Failed to join waitlist" });
+    }
+  });
+
+  app.get("/api/waitlist", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
+    try {
+      const entries = await storage.getWaitlist();
+      res.json(entries);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch waitlist" });
+    }
+  });
+
+  app.delete("/api/waitlist/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      await storage.deleteWaitlistEntry(id);
+      res.json({ message: "Removed" });
+    } catch {
+      res.status(500).json({ message: "Failed to remove entry" });
     }
   });
 
@@ -2557,6 +2658,45 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
           }
           await storage.trackEvent({ page: `/shop`, eventType: "purchase", metadata: JSON.stringify({ artworkId, sessionId: session.id }) });
           fireWebhooks("order.created", { artworkId, sessionId: session.id, amount: session.amount_total });
+
+          // Send purchase receipt + artist sale notification
+          try {
+            const artwork = await storage.getArtwork(artworkId);
+            const buyerName = session.customer_details?.name || "Collector";
+            const buyerEmail = session.customer_details?.email || "";
+            const amount = ((session.amount_total || 0) / 100).toFixed(2);
+            const shippingAddr = session.customer_details?.address
+              ? [session.customer_details.address.line1, session.customer_details.address.city, session.customer_details.address.country].filter(Boolean).join(", ")
+              : undefined;
+            const baseUrl = process.env.REPLIT_DEV_DOMAIN
+              ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+              : process.env.REPLIT_DEPLOYMENT_URL
+              ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+              : "http://localhost:5000";
+            const artworkTitle = artwork?.title || "Original Work";
+            const artworkImage = artwork?.imageUrl ? (artwork.imageUrl.startsWith("http") ? artwork.imageUrl : `${baseUrl}${artwork.imageUrl}`) : "";
+            const { client, fromEmail } = await getResendClient();
+            if (buyerEmail) {
+              await client.emails.send({
+                from: fromEmail,
+                to: buyerEmail,
+                subject: `Purchase Confirmed — ${artworkTitle}`,
+                html: buildOrderReceiptEmail({ buyerName, artworkTitle, artworkImage, amount, shopUrl: `${baseUrl}/shop` }),
+              });
+            }
+            const artistEmail = await storage.getSetting("artist_email");
+            if (artistEmail) {
+              await client.emails.send({
+                from: fromEmail,
+                to: artistEmail,
+                subject: `Sale — ${artworkTitle}`,
+                html: buildSaleNotificationEmail({ buyerName, buyerEmail, artworkTitle, artworkImage, amount, shippingAddress: shippingAddr }),
+              });
+            }
+          } catch (emailErr: unknown) {
+            const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+            console.error("Order email error:", msg);
+          }
         }
 
       }
@@ -2923,6 +3063,85 @@ function buildArtistEmail({ commission, totalPrice, depositAmount }: { commissio
         </table>
       </div>
       ${commission.referenceImageUrls?.length > 0 ? `<p style="color: #B3B3B8; font-size: 12px;">Reference images: ${commission.referenceImageUrls.length} uploaded</p>` : ""}
+    </div>
+  `;
+}
+
+// ─── Order Receipt Email Builders ─────────────────────────────────────────────
+
+function buildOrderReceiptEmail({ buyerName, artworkTitle, artworkImage, amount, shopUrl }: { buyerName: string; artworkTitle: string; artworkImage: string; amount: string; shopUrl: string }) {
+  const firstName = buyerName.split(" ")[0] || buyerName;
+  const amountFormatted = `$${parseFloat(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 8px 0; font-family: Georgia, serif;">Thank you, ${firstName}.</h2>
+      <p style="color: #B3B3B8; font-size: 14px; line-height: 1.6; margin-bottom: 28px;">Your purchase is confirmed. We're preparing your work with care and will be in touch with shipping details shortly.</p>
+      ${artworkImage ? `<div style="text-align: center; margin-bottom: 24px;"><img src="${artworkImage}" alt="${artworkTitle}" style="max-width: 280px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);" /></div>` : ""}
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Artwork</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right; font-style: italic;">${artworkTitle}</td></tr>
+          <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Amount Paid</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">${amountFormatted}</td></tr>
+        </table>
+      </div>
+      <p style="color: #B3B3B8; font-size: 12px; line-height: 1.6; margin-bottom: 16px;">Your work ships with a certificate of authenticity. Estimated handling: 2–5 business days.</p>
+      <a href="${shopUrl}" style="color: #C084FC; font-size: 12px; text-decoration: none;">View shop →</a>
+    </div>
+  `;
+}
+
+function buildSaleNotificationEmail({ buyerName, buyerEmail, artworkTitle, artworkImage, amount, shippingAddress }: { buyerName: string; buyerEmail: string; artworkTitle: string; artworkImage: string; amount: string; shippingAddress?: string }) {
+  const amountFormatted = `$${parseFloat(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Sale Notification</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 24px 0; font-family: Georgia, serif;">A work has been sold</h2>
+      ${artworkImage ? `<div style="text-align: center; margin-bottom: 24px;"><img src="${artworkImage}" alt="${artworkTitle}" style="max-width: 240px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);" /></div>` : ""}
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Artwork</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right; font-style: italic;">${artworkTitle}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Buyer</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${buyerName}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Email</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${buyerEmail}</td></tr>
+          ${shippingAddress ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Ship to</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${shippingAddress}</td></tr>` : ""}
+          <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Amount</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">${amountFormatted}</td></tr>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function buildInquiryEmail({ name, email, phone, subject, message, inquiryType }: { name: string; email: string; phone?: string; subject?: string; message?: string; inquiryType?: string }) {
+  return `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">New Inquiry</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 24px 0; font-family: Georgia, serif;">${subject || inquiryType || "General Inquiry"}</h2>
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Name</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${name}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Email</td><td style="font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;"><a href="mailto:${email}" style="color: #C084FC;">${email}</a></td></tr>
+          ${phone ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Phone</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${phone}</td></tr>` : ""}
+          ${inquiryType ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Type</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${inquiryType}</td></tr>` : ""}
+        </table>
+      </div>
+      ${message ? `<div style="background: rgba(255,255,255,0.02); border-left: 2px solid #C084FC; padding: 16px; border-radius: 0 4px 4px 0; margin-bottom: 24px;"><p style="color: #B3B3B8; font-size: 13px; line-height: 1.7; margin: 0;">${message.replace(/\n/g, "<br>")}</p></div>` : ""}
+      <p style="color: #B3B3B8; font-size: 12px;">Reply directly to this email to reach ${name}.</p>
+    </div>
+  `;
+}
+
+function buildWaitlistNotificationEmail({ email, artworkTitle, artworkImage, artworkSlug, category, baseUrl }: { email: string; artworkTitle: string; artworkImage: string; artworkSlug: string; category: string; baseUrl: string }) {
+  return `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 8px 0; font-family: Georgia, serif;">A new ${category} work is available.</h2>
+      <p style="color: #B3B3B8; font-size: 14px; line-height: 1.6; margin-bottom: 28px;">You asked to be notified when a similar work became available. Here it is.</p>
+      ${artworkImage ? `<div style="text-align: center; margin-bottom: 24px;"><img src="${artworkImage}" alt="${artworkTitle}" style="max-width: 280px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);" /></div>` : ""}
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
+        <p style="color: #F5F5F7; font-size: 14px; font-style: italic; margin: 0;">${artworkTitle}</p>
+        <p style="color: #B3B3B8; font-size: 12px; margin: 4px 0 0 0;">${category}</p>
+      </div>
+      <a href="${baseUrl}/shop/${artworkSlug}" style="display: inline-block; background: #C084FC; color: #000; font-size: 12px; font-weight: 600; text-decoration: none; padding: 12px 24px; border-radius: 4px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 24px;">View This Work</a>
+      <p style="color: #B3B3B8; font-size: 11px; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px;">You're receiving this because you joined the waitlist for ${category} works on <a href="${baseUrl}" style="color: #C084FC;">Creations by Oracle</a>.</p>
     </div>
   `;
 }

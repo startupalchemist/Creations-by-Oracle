@@ -25,6 +25,76 @@ function trackEvent(page: string, eventType: string, sessionId: string, metadata
   }).catch(() => {});
 }
 
+function SoldWaitlistPanel({ artwork }: { artwork: Artwork }) {
+  const [email, setEmail] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  async function handleJoinWaitlist(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.includes("@")) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, category: artwork.category, artworkId: artwork.id }),
+      });
+      if (res.ok) {
+        setSubmitted(true);
+      } else {
+        toast({ title: "Could not join waitlist", description: "Please try again.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Network error", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="border border-white/8 rounded-sm p-5" data-testid="div-sold-section">
+      <p className="text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1">This work has found its home.</p>
+      {submitted ? (
+        <div className="mt-4 text-center">
+          <CheckCircle className="w-6 h-6 text-[#C084FC] mx-auto mb-2" />
+          <p className="text-[#F5F5F7] text-sm">You're on the list.</p>
+          <p className="text-[#B3B3B8]/50 text-xs mt-1">We'll notify you when a similar {artwork.category} work becomes available.</p>
+        </div>
+      ) : (
+        <>
+          <p className="text-[#B3B3B8]/50 text-sm mb-4">Join the waitlist — be first to know when a similar {artwork.category} work is available.</p>
+          <form onSubmit={handleJoinWaitlist} className="flex gap-2" data-testid="form-waitlist">
+            <Input
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/30 focus:border-[#C084FC] text-sm h-9"
+              data-testid="input-waitlist-email"
+            />
+            <Button
+              type="submit"
+              disabled={loading}
+              className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.15em] h-9 px-4"
+              data-testid="button-join-waitlist"
+            >
+              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : "Notify Me"}
+            </Button>
+          </form>
+          <div className="mt-4 border-t border-white/5 pt-4">
+            <Link href="/commission">
+              <span className="text-[#C084FC] text-xs hover:underline cursor-pointer" data-testid="link-commission-similar">Commission a similar piece →</span>
+            </Link>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ArtworkPage() {
   const [, params] = useRoute("/shop/:slug");
   const slug = params?.slug || "";
@@ -406,14 +476,8 @@ export default function ArtworkPage() {
                   )}
                 </div>
               ) : artwork.sold ? (
-                <div className="border border-white/8 rounded-sm p-4 text-center" data-testid="div-sold-section">
-                  <p className="text-[#B3B3B8]/40 text-sm mb-3">This work has found its home.</p>
-                  <Link href="/commission">
-                    <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em]" data-testid="button-commission-similar">
-                      Commission a Similar Piece
-                    </Button>
-                  </Link>
-                </div>
+                <SoldWaitlistPanel artwork={artwork} />
+
               ) : (
                 <div className="border border-white/8 rounded-sm p-4" data-testid="div-inquire-section">
                   <p className="text-[#B3B3B8]/50 text-sm mb-3">Interested in this work?</p>

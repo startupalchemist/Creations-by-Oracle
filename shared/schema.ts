@@ -526,3 +526,21 @@ export const DEFAULT_COMMISSION_SUBJECT_FEES = {
   Fusion:  { "Small (8×10)": 60, "Medium (11×14)": 75, "Large (16×20)": 90, "X-Large (18×24)": 100, "XX-Large (24×36)": 115, "XXX-Large (30×40+)": 135 },
   Oracle:  { "Small (8×10)": 75, "Medium (11×14)": 90, "Large (16×20)": 105, "X-Large (18×24)": 115, "XX-Large (24×36)": 130, "XXX-Large (30×40+)": 150 },
 };
+
+// ─── Artwork Waitlist ─────────────────────────────────────────────────────────
+
+export const artworkWaitlist = pgTable("artwork_waitlist", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  category: text("category").notNull(),
+  artworkId: integer("artwork_id").references(() => artworks.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertArtworkWaitlistSchema = createInsertSchema(artworkWaitlist).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertArtworkWaitlist = z.infer<typeof insertArtworkWaitlistSchema>;
+export type ArtworkWaitlist = typeof artworkWaitlist.$inferSelect;

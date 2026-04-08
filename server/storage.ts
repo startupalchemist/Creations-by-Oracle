@@ -1,5 +1,5 @@
 import {
-  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry, commissions,
+  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry, commissions, artworkWaitlist,
   type Lead, type InsertLead,
   type User, type InsertUser,
   type Session,
@@ -22,6 +22,7 @@ import {
   type AnalyticsEvent,
   type PageRegistry, type InsertPageRegistry,
   type Commission,
+  type ArtworkWaitlist,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, gte, count, sum } from "drizzle-orm";
@@ -197,6 +198,12 @@ export interface IStorage {
   getCommissionBySessionId(sessionId: string): Promise<Commission | undefined>;
   getCommissionByPaymentIntentId(paymentIntentId: string): Promise<Commission | undefined>;
   updateCommission(id: number, data: Partial<Commission>): Promise<Commission | undefined>;
+
+  // ─── Waitlist ────────────────────────────────────────────────────
+  createWaitlistEntry(data: { email: string; category: string; artworkId?: number | null }): Promise<ArtworkWaitlist>;
+  getWaitlistByCategory(category: string): Promise<ArtworkWaitlist[]>;
+  getWaitlist(): Promise<ArtworkWaitlist[]>;
+  deleteWaitlistEntry(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -785,6 +792,27 @@ export class DatabaseStorage implements IStorage {
   async updateCommission(id: number, data: Partial<Commission>): Promise<Commission | undefined> {
     const [result] = await db.update(commissions).set({ ...data, updatedAt: new Date() }).where(eq(commissions.id, id)).returning();
     return result;
+  }
+
+  async createWaitlistEntry(data: { email: string; category: string; artworkId?: number | null }): Promise<ArtworkWaitlist> {
+    const [result] = await db.insert(artworkWaitlist).values({
+      email: data.email,
+      category: data.category,
+      artworkId: data.artworkId || null,
+    }).returning();
+    return result;
+  }
+
+  async getWaitlistByCategory(category: string): Promise<ArtworkWaitlist[]> {
+    return db.select().from(artworkWaitlist).where(eq(artworkWaitlist.category, category)).orderBy(desc(artworkWaitlist.createdAt));
+  }
+
+  async getWaitlist(): Promise<ArtworkWaitlist[]> {
+    return db.select().from(artworkWaitlist).orderBy(desc(artworkWaitlist.createdAt));
+  }
+
+  async deleteWaitlistEntry(id: number): Promise<void> {
+    await db.delete(artworkWaitlist).where(eq(artworkWaitlist.id, id));
   }
 }
 

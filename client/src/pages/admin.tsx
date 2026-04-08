@@ -87,7 +87,7 @@ const statusColors: Record<string, string> = {
   "Sale Closed": "bg-green-600/20 text-green-300",
 };
 
-type TabKey = "dyno" | "dashboard" | "leads" | "blog" | "newsletter" | "users" | "integrations" | "seo" | "services" | "gallery" | "shop" | "pages" | "orders" | "brand";
+type TabKey = "dyno" | "dashboard" | "leads" | "blog" | "newsletter" | "users" | "integrations" | "seo" | "services" | "gallery" | "shop" | "pages" | "orders" | "brand" | "waitlist";
 
 export default function Admin() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -123,6 +123,7 @@ export default function Admin() {
     { key: "shop", label: "Shop", icon: ShoppingBag },
     { key: "orders", label: "Orders", icon: DollarSign },
     { key: "leads", label: "Inquiries", icon: Users },
+    { key: "waitlist", label: "Waitlist", icon: Mail },
     { key: "blog", label: "Blog", icon: FileText },
     { key: "newsletter", label: "Newsletter", icon: Mail },
     ...(user.role === "root" || user.role === "admin" ? [{ key: "pages" as TabKey, label: "Pages", icon: FileCheck }] : []),
@@ -183,6 +184,7 @@ export default function Admin() {
         {activeTab === "orders" && <OrdersTab toast={toast} />}
         {activeTab === "pages" && (user.role === "root" || user.role === "admin") && <PagesTab toast={toast} />}
         {activeTab === "leads" && <LeadsTab toast={toast} />}
+        {activeTab === "waitlist" && <WaitlistTab toast={toast} />}
         {activeTab === "blog" && (
           <BlogTab
             toast={toast}
@@ -523,6 +525,100 @@ function LeadsTab({ toast }: { toast: any }) {
       </div>
       {leads.length === 0 && (
         <p className="text-center py-12 text-[#B3B3B8]/50 text-sm" data-testid="text-no-leads">No leads found.</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Waitlist Tab ─────────────────────────────────────────────────────────────
+
+type WaitlistEntry = { id: number; email: string; category: string; artworkId: number | null; createdAt: string };
+
+function WaitlistTab({ toast }: { toast: any }) {
+  const { data: entries = [], isLoading } = useQuery<WaitlistEntry[]>({
+    queryKey: ["/api/waitlist"],
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/waitlist/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/waitlist"] });
+      toast({ title: "Entry removed" });
+    },
+    onError: () => toast({ title: "Error removing entry", variant: "destructive" }),
+  });
+
+  const byCategory = entries.reduce((acc: Record<string, WaitlistEntry[]>, e) => {
+    (acc[e.category] = acc[e.category] || []).push(e);
+    return acc;
+  }, {});
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 text-[#5D3FD3] animate-spin" data-testid="loader-waitlist" />
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="section-waitlist">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-[#C084FC] mb-1">Collector Waitlist</p>
+          <h2 className="text-xl font-light text-[#F5F5F7]" style={{ fontFamily: "Georgia, serif" }}>
+            {entries.length} {entries.length === 1 ? "subscriber" : "subscribers"}
+          </h2>
+        </div>
+      </div>
+      {entries.length === 0 ? (
+        <p className="text-center py-16 text-[#B3B3B8]/40 text-sm" data-testid="text-no-waitlist">No waitlist entries yet. Entries appear when collectors sign up on sold artwork pages.</p>
+      ) : (
+        <div className="space-y-8">
+          {Object.entries(byCategory).map(([category, catEntries]) => (
+            <div key={category} data-testid={`waitlist-category-${category}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#C084FC]">{category}</p>
+                <span className="text-[#B3B3B8]/40 text-xs">({catEntries.length})</span>
+              </div>
+              <div className="border border-white/5 rounded-sm overflow-hidden">
+                <table className="w-full" data-testid={`table-waitlist-${category}`}>
+                  <thead>
+                    <tr className="border-b border-white/5 bg-white/[0.02]">
+                      <th className="text-left py-2 px-4 text-[10px] uppercase tracking-[0.2em] text-[#B3B3B8]/50 font-normal">Email</th>
+                      <th className="text-left py-2 px-4 text-[10px] uppercase tracking-[0.2em] text-[#B3B3B8]/50 font-normal">Artwork ID</th>
+                      <th className="text-left py-2 px-4 text-[10px] uppercase tracking-[0.2em] text-[#B3B3B8]/50 font-normal">Joined</th>
+                      <th className="py-2 px-4"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catEntries.map((entry) => (
+                      <tr key={entry.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors" data-testid={`row-waitlist-${entry.id}`}>
+                        <td className="py-3 px-4 text-[#F5F5F7] text-xs font-mono">{entry.email}</td>
+                        <td className="py-3 px-4 text-[#B3B3B8] text-xs">{entry.artworkId ? `#${entry.artworkId}` : "—"}</td>
+                        <td className="py-3 px-4 text-[#B3B3B8] text-xs">{new Date(entry.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                        <td className="py-3 px-4 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-[#B3B3B8]/40 hover:text-red-400"
+                            onClick={() => remove.mutate(entry.id)}
+                            disabled={remove.isPending}
+                            data-testid={`button-remove-waitlist-${entry.id}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
