@@ -3151,11 +3151,12 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
               const { client, fromEmail } = await getResendClient();
               const totalPrice = parseFloat(commission.totalPrice);
               const depositAmount = parseFloat(commission.depositAmount);
+              const depositPct = Math.round((depositAmount / totalPrice) * 100);
               await client.emails.send({
                 from: fromEmail,
                 to: commission.customerEmail,
                 subject: "Deposit Received — Commission Confirmed",
-                html: buildCollectorEmail({ commission, totalPrice, depositAmount, baseUrl }),
+                html: buildDepositConfirmedEmail({ commission, totalPrice, depositAmount, depositPct, baseUrl }),
               });
               const artistEmail = await storage.getSetting("artist_email");
               if (artistEmail) {
@@ -3163,7 +3164,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
                   from: fromEmail,
                   to: artistEmail,
                   subject: `Deposit Paid — Commission #${commission.id} from ${commission.customerName}`,
-                  html: buildArtistEmail({ commission, totalPrice, depositAmount }),
+                  html: buildArtistEmail({ commission, totalPrice, depositAmount, depositPct }),
                 });
               }
             } catch (emailErr: unknown) {
@@ -3371,7 +3372,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
             from: fromEmail,
             to: customerEmail,
             subject: "Commission Request Received — Creations by Oracle",
-            html: buildCollectorEmail({ commission, totalPrice, depositAmount, baseUrl }),
+            html: buildCollectorEmail({ commission, totalPrice, depositAmount, depositPct, baseUrl }),
           });
           const artistEmail = await storage.getSetting("artist_email");
           if (artistEmail) {
@@ -3379,7 +3380,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
               from: fromEmail,
               to: artistEmail,
               subject: `New Commission Request — ${style} ${size} from ${customerName}`,
-              html: buildArtistEmail({ commission, totalPrice, depositAmount }),
+              html: buildArtistEmail({ commission, totalPrice, depositAmount, depositPct }),
             });
           }
         } catch (emailErr: any) {
@@ -3467,11 +3468,12 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
-      const updateData: Partial<{ status: string; notes: string | null; inProgressAt: Date; readyAt: Date; finalSentAt: Date; completedAt: Date }> = {};
+      const updateData: Partial<{ status: string; notes: string | null; depositPaidAt: Date; inProgressAt: Date; readyAt: Date; finalSentAt: Date; completedAt: Date }> = {};
       if (status) {
         updateData.status = status;
         // Set per-stage lifecycle timestamps when admin manually advances status
-        if (status === "in_progress") updateData.inProgressAt = new Date();
+        if (status === "deposit_paid") updateData.depositPaidAt = new Date();
+        else if (status === "in_progress") updateData.inProgressAt = new Date();
         else if (status === "ready") updateData.readyAt = new Date();
         else if (status === "final_sent") updateData.finalSentAt = new Date();
         else if (status === "complete") updateData.completedAt = new Date();
@@ -3702,7 +3704,8 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 }
 
 // Email template helpers
-function buildCollectorEmail({ commission, totalPrice, depositAmount, baseUrl }: { commission: Commission; totalPrice: number; depositAmount: number; baseUrl: string }) {
+function buildCollectorEmail({ commission, totalPrice, depositAmount, depositPct, baseUrl }: { commission: Commission; totalPrice: number; depositAmount: number; depositPct?: number; baseUrl: string }) {
+  const pct = depositPct ?? Math.round((depositAmount / totalPrice) * 100);
   return `
     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
       <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
@@ -3715,10 +3718,31 @@ function buildCollectorEmail({ commission, totalPrice, depositAmount, baseUrl }:
           <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Format</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.format}</td></tr>
           ${commission.extraSubjects > 0 ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Extra Subjects</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.extraSubjects}</td></tr>` : ""}
           <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Total</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">$${totalPrice.toLocaleString()}</td></tr>
-          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0;">Deposit Due (50%)</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; text-align: right;">$${depositAmount.toLocaleString()}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0;">Deposit Due (${pct}%)</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; text-align: right;">$${depositAmount.toLocaleString()}</td></tr>
         </table>
       </div>
       <p style="color: #B3B3B8; font-size: 12px; line-height: 1.6;">Questions? Reply to this email or visit <a href="${baseUrl}/contact" style="color: #C084FC;">creations by oracle</a>.</p>
+    </div>
+  `;
+}
+
+function buildDepositConfirmedEmail({ commission, totalPrice, depositAmount, depositPct, baseUrl }: { commission: Commission; totalPrice: number; depositAmount: number; depositPct?: number; baseUrl: string }) {
+  const pct = depositPct ?? Math.round((depositAmount / totalPrice) * 100);
+  const remaining = totalPrice - depositAmount;
+  return `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 8px 0; font-family: Georgia, serif;">Deposit Confirmed — Commission Underway</h2>
+      <p style="color: #B3B3B8; font-size: 14px; line-height: 1.6; margin-bottom: 28px;">Thank you, ${commission.customerName.split(" ")[0]}. Your ${pct}% deposit has been received and your ${commission.style} portrait commission is now underway.</p>
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Commission</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.style} — ${commission.size}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Total</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">$${totalPrice.toLocaleString()}</td></tr>
+          <tr><td style="color: #4ADE80; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Deposit Paid (${pct}%)</td><td style="color: #4ADE80; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">$${depositAmount.toLocaleString()}</td></tr>
+          <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Remaining Balance</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">$${remaining.toLocaleString()}</td></tr>
+        </table>
+      </div>
+      <p style="color: #B3B3B8; font-size: 12px; line-height: 1.6;">We'll reach out as your piece progresses. Questions? Reply to this email or visit <a href="${baseUrl}/contact" style="color: #C084FC;">creations by oracle</a>.</p>
     </div>
   `;
 }
@@ -3797,7 +3821,8 @@ function buildCommissionCompleteArtistEmail({ commission, totalPrice, finalAmoun
   `;
 }
 
-function buildArtistEmail({ commission, totalPrice, depositAmount }: { commission: Commission; totalPrice: number; depositAmount: number }) {
+function buildArtistEmail({ commission, totalPrice, depositAmount, depositPct }: { commission: Commission; totalPrice: number; depositAmount: number; depositPct?: number }) {
+  const pct = depositPct ?? Math.round((depositAmount / totalPrice) * 100);
   return `
     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
       <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">New Commission</p>
@@ -3811,7 +3836,7 @@ function buildArtistEmail({ commission, totalPrice, depositAmount }: { commissio
           ${commission.extraSubjects > 0 ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Extra Subjects</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.extraSubjects}</td></tr>` : ""}
           ${commission.notes ? `<tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);" colspan="2">Notes: ${commission.notes}</td></tr>` : ""}
           <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Total</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">$${totalPrice.toLocaleString()}</td></tr>
-          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0;">Deposit (50%)</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; text-align: right;">$${depositAmount.toLocaleString()}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0;">Deposit (${pct}%)</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; text-align: right;">$${depositAmount.toLocaleString()}</td></tr>
         </table>
       </div>
       ${commission.referenceImageUrls?.length > 0 ? `<p style="color: #B3B3B8; font-size: 12px;">Reference images: ${commission.referenceImageUrls.length} uploaded</p>` : ""}
