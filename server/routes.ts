@@ -3326,7 +3326,8 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       const matrix = matrixRaw ? JSON.parse(matrixRaw) : DEFAULT_COMMISSION_PRICE_MATRIX;
       const addons = addonsRaw ? JSON.parse(addonsRaw) : DEFAULT_COMMISSION_FORMAT_ADDONS;
       const subjectFees = subjectFeesRaw ? JSON.parse(subjectFeesRaw) : DEFAULT_COMMISSION_SUBJECT_FEES;
-      const depositPct = depositPctRaw ? Math.max(1, Math.min(100, parseInt(depositPctRaw))) : 50;
+      const parsedPct = depositPctRaw ? parseInt(depositPctRaw, 10) : NaN;
+      const depositPct = isNaN(parsedPct) ? 50 : Math.max(1, Math.min(100, parsedPct));
 
       const basePrice = matrix[style]?.[size];
       if (basePrice === undefined) {
