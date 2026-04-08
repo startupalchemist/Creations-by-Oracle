@@ -522,7 +522,7 @@ export const DEFAULT_COMMISSION_FORMAT_ADDONS = {
 };
 
 export const DEFAULT_COMMISSION_SUBJECT_FEES = {
-  Realism: { "Small (8×10)": 50, "Medium (11×14)": 75, "Large (16×20)": 100, "X-Large (18×24)": 100, "XX-Large (24×36)": 125, "XXX-Large (30×40+)": 150 },
-  Fusion: { "Small (8×10)": 65, "Medium (11×14)": 90, "Large (16×20)": 120, "X-Large (18×24)": 120, "XX-Large (24×36)": 150, "XXX-Large (30×40+)": 180 },
-  Oracle: { "Small (8×10)": 80, "Medium (11×14)": 110, "Large (16×20)": 140, "X-Large (18×24)": 150, "XX-Large (24×36)": 175, "XXX-Large (30×40+)": 200 },
+  Realism: { "Small (8×10)": 50, "Medium (11×14)": 65, "Large (16×20)": 75, "X-Large (18×24)": 85, "XX-Large (24×36)": 100, "XXX-Large (30×40+)": 125 },
+  Fusion:  { "Small (8×10)": 60, "Medium (11×14)": 75, "Large (16×20)": 90, "X-Large (18×24)": 100, "XX-Large (24×36)": 115, "XXX-Large (30×40+)": 135 },
+  Oracle:  { "Small (8×10)": 75, "Medium (11×14)": 90, "Large (16×20)": 105, "X-Large (18×24)": 115, "XX-Large (24×36)": 130, "XXX-Large (30×40+)": 150 },
 };

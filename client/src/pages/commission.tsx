@@ -346,7 +346,7 @@ export default function Commission() {
 
   return (
     <div className="min-h-screen bg-[#08060e] text-white">
-      <div className="max-w-6xl mx-auto px-4 py-16">
+      <div className={`max-w-6xl mx-auto px-4 py-16 ${total > 0 && step < 6 ? "pb-24 lg:pb-16" : ""}`}>
         <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-12 lg:items-start">
 
           {/* Left: Main wizard */}
@@ -367,20 +367,6 @@ export default function Commission() {
 
             <StepDots current={step} total={STEP_LABELS.length} />
 
-            {/* Mobile price pill */}
-            {total > 0 && step > 0 && (
-              <div className="lg:hidden flex items-center gap-4 mb-8 p-4 rounded-lg border border-white/10 bg-white/[0.02]">
-                <div>
-                  <p className="text-xs text-white/40 mb-0.5">Total</p>
-                  <p className="text-xl font-light text-white" data-testid="text-commission-total">${total.toLocaleString()}</p>
-                </div>
-                <div className="w-px h-8 bg-white/10" />
-                <div>
-                  <p className="text-xs text-white/40 mb-0.5">Deposit (50%)</p>
-                  <p className="text-xl font-light text-[#C084FC]" data-testid="text-commission-deposit">${deposit.toLocaleString()}</p>
-                </div>
-              </div>
-            )}
 
             <AnimatePresence mode="wait" custom={dir}>
               <motion.div
@@ -932,6 +918,43 @@ export default function Commission() {
 
         </div>
       </div>
+
+      {/* Mobile bottom-sticky price panel */}
+      {total > 0 && step < 6 && (
+        <div
+          data-testid="div-mobile-sticky-price"
+          className="fixed bottom-0 left-0 right-0 z-40 lg:hidden border-t border-white/10 bg-[#08060e]/95 backdrop-blur-md px-4 py-3"
+        >
+          <div className="max-w-md mx-auto flex items-center justify-between">
+            <div>
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-0.5">Total</p>
+              <p
+                data-testid="text-commission-total"
+                className="text-lg font-light text-white"
+                style={{ fontFamily: "Georgia, serif" }}
+              >
+                ${total.toLocaleString()}
+              </p>
+            </div>
+            <div className="w-px h-8 bg-white/10" />
+            <div>
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-0.5">Deposit (50%)</p>
+              <p
+                data-testid="text-commission-deposit"
+                className="text-lg font-light text-[#C084FC]"
+                style={{ fontFamily: "Georgia, serif" }}
+              >
+                ${deposit.toLocaleString()}
+              </p>
+            </div>
+            <div className="w-px h-8 bg-white/10" />
+            <div className="text-right">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-0.5">Step</p>
+              <p className="text-sm text-white/50">{step + 1}/7</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
