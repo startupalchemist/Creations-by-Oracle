@@ -3094,6 +3094,15 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
                 finalPaymentPaidAt: new Date(),
                 completedAt: new Date(),
               });
+              // Deactivate the Payment Link so it cannot be reused for duplicate charges
+              if (commission.finalPaymentLinkId) {
+                try {
+                  await stripe.paymentLinks.update(commission.finalPaymentLinkId, { active: false });
+                } catch (deactivateErr: unknown) {
+                  const msg = deactivateErr instanceof Error ? deactivateErr.message : String(deactivateErr);
+                  console.error("Failed to deactivate payment link:", msg);
+                }
+              }
               try {
                 const baseUrl = process.env.REPLIT_DEV_DOMAIN
                   ? `https://${process.env.REPLIT_DEV_DOMAIN}`
