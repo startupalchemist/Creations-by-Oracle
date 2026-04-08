@@ -33,24 +33,29 @@ async function printfulRequest<T>(
   return res.json() as Promise<T>;
 }
 
-export interface PrintfulVariant {
-  id: number;
+// ─── Sync Variant (product variant inside an artwork-synced product) ─────────
+
+export interface PrintfulSyncVariant {
+  id: number;            // sync_variant_id (used to submit orders)
   name: string;
   retail_price: string;
   currency: string;
   preview_url?: string;
 }
 
-export interface PrintfulProduct {
-  id: number;
-  external_id?: string;
+export interface PrintfulSyncProduct {
+  id: number;            // sync_product_id
   name: string;
-  variants: PrintfulVariant[];
   thumbnail_url?: string;
+  sync_variants: PrintfulSyncVariant[];
 }
 
-export interface PrintfulSyncVariant {
-  variant_id: number;
+// ─── Create a sync product on Printful ───────────────────────────────────────
+// Note: The files URL must be publicly accessible. Each sync_variant references
+// a real Printful catalog variant (printful_variant_id). These catalog IDs come
+// from the Printful product catalog, not our system.
+export interface SyncVariantInput {
+  printful_variant_id: number;
   retail_price: string;
   files: { type: string; url: string }[];
 }
@@ -58,53 +63,26 @@ export interface PrintfulSyncVariant {
 export async function createPrintfulProduct(
   artworkTitle: string,
   imageUrl: string,
-  variants: PrintfulSyncVariant[]
+  variants: SyncVariantInput[]
 ): Promise<{ id: number; name: string }> {
-  const result = await printfulRequest<{ result: { sync_product: { id: number; name: string } } }>(
-    "POST",
-    "/store/products",
-    {
-      sync_product: {
-        name: artworkTitle,
-        thumbnail: imageUrl,
-      },
-      sync_variants: variants,
-    }
-  );
+  const result = await printfulRequest<{
+    result: { sync_product: { id: number; name: string } };
+  }>("POST", "/store/products", {
+    sync_product: {
+      name: artworkTitle,
+      thumbnail: imageUrl,
+    },
+    sync_variants: variants,
+  });
   return result.result.sync_product;
 }
 
-export async function getProductVariants(productId: string): Promise<PrintfulVariant[]> {
+// ─── Get a sync product and its sync variants ────────────────────────────────
+export async function getPrintfulProduct(productId: string): Promise<PrintfulSyncProduct | null> {
   try {
     const result = await printfulRequest<{
       result: {
-        sync_product: { id: number; name: string };
-        sync_variants: {
-          id: number;
-          name: string;
-          retail_price: string;
-          currency: string;
-          preview_url?: string;
-        }[];
-      };
-    }>("GET", `/store/products/${productId}`);
-    return result.result.sync_variants.map((v) => ({
-      id: v.id,
-      name: v.name,
-      retail_price: v.retail_price,
-      currency: v.currency,
-      preview_url: v.preview_url,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-export async function getPrintfulProduct(productId: string): Promise<PrintfulProduct | null> {
-  try {
-    const result = await printfulRequest<{
-      result: {
-        sync_product: { id: number; name: string; thumbnail_url?: string; external_id?: string };
+        sync_product: { id: number; name: string; thumbnail_url?: string };
         sync_variants: {
           id: number;
           name: string;
@@ -118,10 +96,9 @@ export async function getPrintfulProduct(productId: string): Promise<PrintfulPro
     const { sync_product, sync_variants } = result.result;
     return {
       id: sync_product.id,
-      external_id: sync_product.external_id,
       name: sync_product.name,
       thumbnail_url: sync_product.thumbnail_url,
-      variants: sync_variants.map((v) => ({
+      sync_variants: sync_variants.map((v) => ({
         id: v.id,
         name: v.name,
         retail_price: v.retail_price,
@@ -134,8 +111,19 @@ export async function getPrintfulProduct(productId: string): Promise<PrintfulPro
   }
 }
 
+// ─── Get sync variants for a product (lightweight) ───────────────────────────
+export async function getProductVariants(productId: string): Promise<PrintfulSyncVariant[]> {
+  try {
+    const product = await getPrintfulProduct(productId);
+    return product?.sync_variants ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// ─── Create a fulfillment order using sync_variant_id ────────────────────────
 export async function createPrintfulOrder(params: {
-  variantId: number;
+  syncVariantId: number;    // sync_variant_id from the synced product (NOT catalog variant_id)
   quantity: number;
   retailPrice: string;
   recipient: {
@@ -147,7 +135,6 @@ export async function createPrintfulOrder(params: {
     country_code: string;
     email: string;
   };
-  imageUrl: string;
 }): Promise<{ id: number; status: string }> {
   const result = await printfulRequest<{ result: { id: number; status: string } }>(
     "POST",
@@ -156,10 +143,9 @@ export async function createPrintfulOrder(params: {
       recipient: params.recipient,
       items: [
         {
-          variant_id: params.variantId,
+          sync_variant_id: params.syncVariantId,
           quantity: params.quantity,
           retail_price: params.retailPrice,
-          files: [{ url: params.imageUrl }],
         },
       ],
     }
@@ -167,6 +153,7 @@ export async function createPrintfulOrder(params: {
   return result.result;
 }
 
+// ─── Get Printful order status + tracking ────────────────────────────────────
 export async function getOrderStatus(printfulOrderId: string): Promise<{
   id: number;
   status: string;
@@ -194,6 +181,7 @@ export async function getOrderStatus(printfulOrderId: string): Promise<{
   }
 }
 
+// ─── Get Printful store info ──────────────────────────────────────────────────
 export async function getPrintfulStoreInfo(): Promise<{
   id: number;
   name: string;
@@ -210,23 +198,26 @@ export async function getPrintfulStoreInfo(): Promise<{
   }
 }
 
-// Template variant IDs are internal placeholders used when no Printful product is linked.
-// When Printful API is configured, the artist syncs each artwork to Printful via
-// POST /api/artworks/:id/sync-printful which creates a real Printful product and
-// stores the real Printful product/variant IDs in printfulProductId. Orders against
-// artworks with a real printfulProductId use live Printful variant IDs; orders against
-// artworks with no Printful product only record the intent (Printful submission is skipped).
-export const PRINT_VARIANT_TEMPLATES: {
+// ─── Template print sizes ─────────────────────────────────────────────────────
+// These are local display-only definitions used when no Printful product has been
+// synced for an artwork. They define sizing options and base costs for pricing UI.
+// NO Printful variant IDs are used here — orders against un-synced artworks are
+// recorded locally as "pending_submission" and never submitted to Printful.
+// To enable real fulfillment, the artist must sync the artwork in the Shop admin.
+export const PRINT_SIZE_TEMPLATES: {
+  id: string;       // local-only ID (never sent to Printful)
   label: string;
-  printfulVariantId: number;
   baseCost: number;
   description: string;
 }[] = [
-  { label: 'Poster 11×17"', printfulVariantId: 1001, baseCost: 12.5, description: "Matte poster print" },
-  { label: 'Poster 18×24"', printfulVariantId: 1002, baseCost: 18.0, description: "Matte poster print" },
-  { label: 'Canvas 16×20"', printfulVariantId: 1003, baseCost: 35.0, description: "Gallery-wrapped canvas" },
-  { label: 'Canvas 24×36"', printfulVariantId: 1004, baseCost: 55.0, description: "Gallery-wrapped canvas" },
+  { id: "poster_11x17", label: 'Poster 11×17"', baseCost: 12.5, description: "Matte poster print" },
+  { id: "poster_18x24", label: 'Poster 18×24"', baseCost: 18.0, description: "Matte poster print" },
+  { id: "canvas_16x20", label: 'Canvas 16×20"', baseCost: 35.0, description: "Gallery-wrapped canvas" },
+  { id: "canvas_24x36", label: 'Canvas 24×36"', baseCost: 55.0, description: "Gallery-wrapped canvas" },
 ];
+
+// Backward compat alias
+export const PRINT_VARIANT_TEMPLATES = PRINT_SIZE_TEMPLATES;
 
 export function computeVariantRetailPrice(baseCost: number, markupPercent: number): string {
   const retail = baseCost * (1 + markupPercent / 100);

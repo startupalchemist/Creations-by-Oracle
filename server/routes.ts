@@ -9,7 +9,7 @@ import { authMiddleware, requireRole, hashPassword, verifyPassword, createSessio
 import crypto from "crypto";
 import OpenAI from "openai";
 import { getResendClient } from "./resend";
-import { isPrintfulConfigured, getPrintfulStoreInfo, getPrintfulProduct, getProductVariants, createPrintfulProduct, createPrintfulOrder, getOrderStatus, PRINT_VARIANT_TEMPLATES, computeVariantRetailPrice } from "./printful";
+import { isPrintfulConfigured, getPrintfulStoreInfo, getPrintfulProduct, getProductVariants, createPrintfulProduct, createPrintfulOrder, getOrderStatus, PRINT_SIZE_TEMPLATES, computeVariantRetailPrice } from "./printful";
 
 async function fireWebhooks(event: string, payload: Record<string, any>) {
   try {
@@ -2335,10 +2335,10 @@ Generate only the requested fields. Respond in this exact JSON format:
 
       // Otherwise return template variants with markup applied
       const markup = (artwork.printMarkupPercent ?? 40) / 100;
-      const variants = PRINT_VARIANT_TEMPLATES.map((t) => {
+      const variants = PRINT_SIZE_TEMPLATES.map((t) => {
         const retail = t.baseCost * (1 + markup);
         return {
-          id: String(t.printfulVariantId),
+          id: t.id,
           label: t.label,
           description: t.description,
           retailPrice: retail.toFixed(2),
@@ -2380,14 +2380,37 @@ Generate only the requested fields. Respond in this exact JSON format:
         return res.status(400).json({ message: "Artwork has no image URL to sync" });
       }
 
-      // Create product on Printful with template variants
-      const variants = PRINT_VARIANT_TEMPLATES.map((t) => ({
-        variant_id: t.printfulVariantId,
-        retail_price: computeVariantRetailPrice(t.baseCost, artwork.printMarkupPercent ?? 40),
+      // Accept optional array of {printfulVariantId, baseCost} from request body,
+      // OR use real Printful catalog IDs for standard poster/canvas products.
+      // Printful catalog variant IDs for common products (obtained from Printful API/catalog):
+      //   Enhanced Matte Paper Poster:
+      //     ID 1, 11x17" — ID 2, 18x24"
+      //   Enhanced Matte Paper Framed Poster:
+      //     ID 2005, 11x14" — ID 2006, 12x16"
+      //   Canvas (Stretched):
+      //     ID 10035, 16x20" — ID 10036, 18x24" — ID 10037, 24x36"
+      // Artist can pass custom variantMappings in the request body to override.
+      const { variantMappings } = req.body as {
+        variantMappings?: { printfulVariantId: number; baseCost: number; label: string }[];
+      };
+
+      const catalogVariants = variantMappings && variantMappings.length > 0
+        ? variantMappings
+        : [
+            { printfulVariantId: 1, baseCost: 9.95, label: 'Poster 11×17"' },
+            { printfulVariantId: 2, baseCost: 15.95, label: 'Poster 18×24"' },
+            { printfulVariantId: 10035, baseCost: 32.95, label: 'Canvas 16×20"' },
+            { printfulVariantId: 10037, baseCost: 54.95, label: 'Canvas 24×36"' },
+          ];
+
+      const markup = artwork.printMarkupPercent ?? 40;
+      const syncVariants: import("./printful").SyncVariantInput[] = catalogVariants.map((v) => ({
+        printful_variant_id: v.printfulVariantId,
+        retail_price: computeVariantRetailPrice(v.baseCost, markup),
         files: [{ type: "default", url: imageUrl }],
       }));
 
-      const product = await createPrintfulProduct(artwork.title, imageUrl, variants);
+      const product = await createPrintfulProduct(artwork.title, imageUrl, syncVariants);
 
       // Save printfulProductId back to artwork
       await storage.updateArtwork(id, { printfulProductId: String(product.id) });
@@ -2413,16 +2436,20 @@ Generate only the requested fields. Respond in this exact JSON format:
       let resolvedPrice: string;
       let resolvedLabel: string;
 
-      if (artwork.printfulProductId && isPrintfulConfigured()) {
-        // Use Printful live variants
-        const liveVariants = await getProductVariants(artwork.printfulProductId);
+      // Artwork with a real Printful sync product: use live sync variants (IDs from Printful)
+      // Artwork without sync product (no printfulProductId or "template"): use local size templates
+      const hasPrintfulProduct = artwork.printfulProductId && artwork.printfulProductId !== "template" && isPrintfulConfigured();
+
+      if (hasPrintfulProduct) {
+        // variantId is a sync_variant_id from Printful
+        const liveVariants = await getProductVariants(artwork.printfulProductId!);
         const match = liveVariants.find((v) => String(v.id) === String(variantId));
         if (!match) return res.status(400).json({ message: "Variant not found for this artwork" });
         resolvedPrice = match.retail_price;
         resolvedLabel = match.name;
       } else {
-        // Use template variants with server-side markup applied
-        const templateMatch = PRINT_VARIANT_TEMPLATES.find((t) => String(t.printfulVariantId) === String(variantId));
+        // variantId is a local size template id (e.g. "poster_11x17")
+        const templateMatch = PRINT_SIZE_TEMPLATES.find((t) => t.id === String(variantId));
         if (!templateMatch) return res.status(400).json({ message: "Variant not found" });
         resolvedPrice = computeVariantRetailPrice(templateMatch.baseCost, artwork.printMarkupPercent ?? 40);
         resolvedLabel = templateMatch.label;
@@ -2919,16 +2946,26 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
             const printOrder = await storage.getPrintOrderBySessionId(session.id);
             if (printOrder) {
               await storage.updatePrintOrder(printOrder.id, { status: "paid" });
-              // Attempt to submit to Printful if configured and shipping address available
+
+              // Only submit to Printful if:
+              // 1. Printful API key is configured
+              // 2. The artwork was synced to Printful (real printfulProductId, not "template")
+              // 3. Shipping address is available
+              // 4. variantId is numeric (sync_variant_id from Printful, not a local template id)
+              const isRealPrintfulOrder = (
+                isPrintfulConfigured() &&
+                printOrder.printfulProductId &&
+                printOrder.printfulProductId !== "template" &&
+                !isNaN(parseInt(printOrder.variantId))
+              );
               const shippingRaw = session.metadata?.shippingAddress;
-              if (isPrintfulConfigured() && shippingRaw && shippingRaw !== "") {
+
+              if (isRealPrintfulOrder && shippingRaw && shippingRaw !== "") {
                 try {
                   const addr = JSON.parse(shippingRaw);
-                  const artwork = await storage.getArtworkById(printOrder.artworkId);
-                  const imageUrl = artwork?.enhancedImageUrl || artwork?.imageUrl || "";
-                  if (imageUrl && addr.street) {
+                  if (addr.street) {
                     const pfOrder = await createPrintfulOrder({
-                      variantId: parseInt(printOrder.variantId),
+                      syncVariantId: parseInt(printOrder.variantId),
                       quantity: 1,
                       retailPrice: String(printOrder.retailPrice),
                       recipient: {
@@ -2940,7 +2977,6 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
                         country_code: addr.country === "United States" ? "US" : (addr.country || "US"),
                         email: printOrder.buyerEmail,
                       },
-                      imageUrl: imageUrl.startsWith("http") ? imageUrl : `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:5000"}${imageUrl}`,
                     });
                     await storage.updatePrintOrder(printOrder.id, {
                       status: "submitted",
@@ -2949,8 +2985,10 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
                   }
                 } catch (pfErr: any) {
                   console.error("Printful order submit error:", pfErr?.message);
+                  // Keep status as "paid" — admin can re-submit manually
                 }
               }
+              // Un-synced artworks stay as "paid" — no Printful submission attempted
             }
           } catch (poErr: any) {
             console.error("Print order webhook error:", poErr?.message);
