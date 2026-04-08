@@ -29,7 +29,7 @@ import {
   type Exhibition, type InsertExhibition,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, gte, count, sum } from "drizzle-orm";
+import { eq, desc, and, sql, gte, gt, count, sum } from "drizzle-orm";
 
 export interface IStorage {
   createLead(lead: InsertLead): Promise<Lead>;
@@ -296,7 +296,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(sessions).where(eq(sessions.userId, userId)).orderBy(desc(sessions.createdAt));
   }
   async getAllActiveSessions(): Promise<Session[]> {
-    return db.select().from(sessions).orderBy(desc(sessions.createdAt)).limit(100);
+    return db.select().from(sessions).where(gt(sessions.expiresAt, new Date())).orderBy(desc(sessions.createdAt));
   }
   async deleteSession(token: string): Promise<void> {
     await db.delete(sessions).where(eq(sessions.token, token));

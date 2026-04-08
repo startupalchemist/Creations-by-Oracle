@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertLeadSchema, insertWebhookSchema, leadStatuses, webhookEvents, insertArtworkSchema, artworkCategories, artworkStatuses, type Commission } from "@shared/schema";
+import { insertLeadSchema, insertWebhookSchema, leadStatuses, webhookEvents, insertArtworkSchema, artworkCategories, artworkStatuses, insertPostSchema, insertTestimonialSchema, type Commission } from "@shared/schema";
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
@@ -519,10 +519,14 @@ export async function registerRoutes(
 
   app.post("/api/posts", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
-      const { title, content, excerpt, tags, seoTitle, seoDescription, status, featuredImage } = req.body;
-      if (!title) {
-        return res.status(400).json({ message: "Title is required" });
+      const postBodySchema = insertPostSchema.extend({
+        title: z.string().min(1, "Title is required"),
+      });
+      const parsed = postBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       }
+      const { title, content, excerpt, tags, seoTitle, seoDescription, status, featuredImage } = parsed.data;
       let slug = slugify(title);
       const existing = await storage.getPostBySlug(slug);
       if (existing) {
@@ -542,7 +546,8 @@ export async function registerRoutes(
         authorId: req.user!.id,
       });
       res.status(201).json(post);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to create post" });
     }
   });
@@ -2687,7 +2692,17 @@ Generate only the requested fields. Respond in this exact JSON format:
   app.patch("/api/print-orders/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { status, printfulOrderId, trackingNumber } = req.body;
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const printOrderPatchSchema = z.object({
+        status: z.string().optional(),
+        printfulOrderId: z.string().optional(),
+        trackingNumber: z.string().nullable().optional(),
+      });
+      const parsed = printOrderPatchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      }
+      const { status, printfulOrderId, trackingNumber } = parsed.data;
       const updates: Record<string, any> = {};
       if (status) updates.status = status;
       if (printfulOrderId) updates.printfulOrderId = printfulOrderId;
@@ -3626,11 +3641,17 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
   app.patch("/api/commissions/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { status, notes, deliveryImageUrl } = req.body;
-      const validStatuses = ["awaiting_deposit", "deposit_paid", "in_progress", "ready", "final_sent", "complete", "cancelled"];
-      if (status && !validStatuses.includes(status)) {
-        return res.status(400).json({ message: "Invalid status" });
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const commissionPatchSchema = z.object({
+        status: z.enum(["awaiting_deposit", "deposit_paid", "in_progress", "ready", "final_sent", "complete", "cancelled"]).optional(),
+        notes: z.string().nullable().optional(),
+        deliveryImageUrl: z.string().nullable().optional(),
+      });
+      const parsed = commissionPatchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       }
+      const { status, notes, deliveryImageUrl } = parsed.data;
       const updateData: Partial<{ status: string; notes: string | null; deliveryImageUrl: string | null; depositPaidAt: Date; inProgressAt: Date; readyAt: Date; finalSentAt: Date; completedAt: Date }> = {};
       if (status) {
         updateData.status = status;
@@ -3762,20 +3783,26 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
   app.post("/api/testimonials", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { collectorName, location, quote, artworkId, displayOrder, active } = req.body;
-      if (!collectorName || !quote) {
-        return res.status(400).json({ message: "collectorName and quote are required" });
+      const testimonialBodySchema = insertTestimonialSchema.extend({
+        collectorName: z.string().min(1, "Collector name is required"),
+        quote: z.string().min(1, "Quote is required"),
+      });
+      const parsed = testimonialBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       }
+      const { collectorName, location, quote, artworkId, displayOrder, active } = parsed.data;
       const item = await storage.createTestimonial({
         collectorName,
         location: location || null,
         quote,
-        artworkId: artworkId ? parseInt(artworkId) : null,
+        artworkId: artworkId ?? null,
         displayOrder: displayOrder ?? 0,
         active: active !== false,
       });
       res.status(201).json(item);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to create testimonial" });
     }
   });
@@ -3783,18 +3810,25 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
   app.patch("/api/testimonials/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { collectorName, location, quote, artworkId, displayOrder, active } = req.body;
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const patchSchema = insertTestimonialSchema.partial();
+      const parsed = patchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      }
       const updates: Record<string, any> = {};
+      const { collectorName, location, quote, artworkId, displayOrder, active } = parsed.data;
       if (collectorName !== undefined) updates.collectorName = collectorName;
       if (location !== undefined) updates.location = location;
       if (quote !== undefined) updates.quote = quote;
-      if (artworkId !== undefined) updates.artworkId = artworkId ? parseInt(artworkId) : null;
+      if (artworkId !== undefined) updates.artworkId = artworkId ?? null;
       if (displayOrder !== undefined) updates.displayOrder = displayOrder;
       if (active !== undefined) updates.active = active;
       const item = await storage.updateTestimonial(id, updates);
       if (!item) return res.status(404).json({ message: "Testimonial not found" });
       res.json(item);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "Failed to update testimonial" });
     }
   });
