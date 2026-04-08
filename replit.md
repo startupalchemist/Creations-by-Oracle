@@ -33,8 +33,9 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - `users` — session auth users (root/admin/editor)
 - `sessions` — auth sessions
 - `leads` — collector inquiries (subject, status: New Inquiry → Closed)
-- `artworks` — artwork catalog (title, slug, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, sold, status, category, featured, seoTitle, seoDescription, seoKeywords, viewCount, stripeProductId, stripePriceId, pageRegistryId, publishedAt)
+- `artworks` — artwork catalog (title, slug, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, sold, status, category, featured, seoTitle, seoDescription, seoKeywords, viewCount, stripeProductId, stripePriceId, pageRegistryId, publishedAt, printsAvailable, printfulProductId, printMarkupPercent)
 - `orders` — artwork purchases (artworkId, buyerName, buyerEmail, amount, status, stripeSessionId, stripePaymentIntentId, shippingAddress)
+- `print_orders` — Printful print-on-demand orders (artworkId, buyerName, buyerEmail, printfulProductId, variantId, variantLabel, retailPrice, printfulOrderId, status, shippingAddress, stripeSessionId)
 - `analyticsEvents` — page views, CTR, CTA clicks, purchases (page, eventType, sessionId, referrer, utmSource/Medium/Campaign, metadata)
 - `pageRegistry` — all indexed pages auto-created on publish (slug, title, pageType, seoTitle/Description/Keywords, status, linkedEntityId/Type)
 - `posts`, `topics` — blog articles (AI-generated, SEO-focused)
@@ -48,6 +49,7 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - GET/POST/PATCH/DELETE `/api/artworks` — artwork CRUD
 - GET `/api/artworks/:idOrSlug` — artwork by ID or slug
 - POST `/api/artworks/:id/view` — increment view count
+- GET `/api/artworks/:id/print-variants` — get print size/format options (using template prices if no Printful product linked)
 - POST `/api/upload` — base64 image upload to /uploads/
 - POST `/api/ai/enhance-artwork` — OpenAI artwork analysis + description/SEO/price generation
 - POST `/api/ai/capture-guidance` — real-time photo capture quality feedback
@@ -55,8 +57,12 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - GET `/api/analytics/summary` — analytics summary (admin only)
 - GET/POST/PATCH/DELETE `/api/pages` — page registry CRUD
 - POST `/api/checkout` — Stripe checkout session creation
-- POST `/api/checkout/webhook` — Stripe webhook (marks artwork sold)
+- POST `/api/checkout/webhook` — Stripe webhook (marks artwork sold, handles print orders)
 - GET `/api/orders` — order list (admin only)
+- POST `/api/print-checkout` — create Stripe checkout for print order
+- GET `/api/print-orders` — print order list (admin only)
+- PATCH `/api/print-orders/:id` — update print order status
+- GET `/api/printful/status` — Printful connection status (admin only)
 
 ## Public Pages
 - `/` — Home (hero, mediums, featured works, about teaser, commission CTA)
@@ -72,17 +78,27 @@ Dark-themed artist website for an independent contemporary artist specializing i
 ## Admin Tabs
 - **The Dyno** — analytics dashboard (TheDyno component)
 - **Dashboard** — lead pipeline summary
-- **Shop** — artwork manager (create/edit/publish/delete + AI enhance + image upload)
-- **Orders** — Stripe purchase records
+- **Shop** — artwork manager (create/edit/publish/delete + AI enhance + image upload + prints toggle)
+- **Orders** — Stripe purchase records (sub-tabs: Original Works | Print Orders)
 - **Inquiries** — collector lead management
 - **Blog** — AI blog content generation
 - **Newsletter** — email newsletter
 - **Pages** — page registry (auto-populated on publish)
 - **Users** — user management (admin+)
-- **Integrations** — webhook + integration management
+- **Integrations** — webhook + integration management + Printful connection status
 - **SEO** — SEO settings and blog services
 - **Blog Services** — controls AI blog topic research context
 - **Gallery** — photo gallery section/item management
+
+## Print-on-Demand (Printful)
+- Admin can toggle `printsAvailable` per artwork via switch in Shop tab cards
+- Print variants use template sizes if no Printful product linked: Poster 11×17", Poster 18×24", Canvas 16×20", Canvas 24×36"
+- `printMarkupPercent` (default 40%) applied over Printful base cost
+- Artwork page shows collapsible "Limited Edition Prints" section if `printsAvailable=true`
+- Collector selects a variant → enters details → Stripe checkout (orderType=print in metadata)
+- Stripe webhook auto-submits to Printful API if `PRINTFUL_API_KEY` is set and shipping address exists
+- Print orders tracked in `print_orders` table; admin manages status in Orders > Print Orders
+- Integrations tab shows Printful connection status (configured/not configured)
 
 ## Analytics Tracking
 Analytics events tracked client-side on:

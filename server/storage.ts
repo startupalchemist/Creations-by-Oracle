@@ -1,5 +1,5 @@
 import {
-  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry, commissions, artworkWaitlist,
+  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry, commissions, artworkWaitlist, printOrders,
   type Lead, type InsertLead,
   type User, type InsertUser,
   type Session,
@@ -23,6 +23,7 @@ import {
   type PageRegistry, type InsertPageRegistry,
   type Commission,
   type ArtworkWaitlist,
+  type PrintOrder,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, gte, count, sum } from "drizzle-orm";
@@ -204,6 +205,13 @@ export interface IStorage {
   getWaitlistByCategory(category: string): Promise<ArtworkWaitlist[]>;
   getWaitlist(): Promise<ArtworkWaitlist[]>;
   deleteWaitlistEntry(id: number): Promise<void>;
+
+  // ─── Print Orders (Printful) ──────────────────────────────────────
+  createPrintOrder(data: { artworkId: number; buyerName: string; buyerEmail: string; printfulProductId: string; variantId: string; variantLabel: string; retailPrice: string; shippingAddress?: string; stripeSessionId?: string }): Promise<PrintOrder>;
+  getPrintOrders(): Promise<PrintOrder[]>;
+  getPrintOrderById(id: number): Promise<PrintOrder | undefined>;
+  getPrintOrderBySessionId(sessionId: string): Promise<PrintOrder | undefined>;
+  updatePrintOrder(id: number, data: Partial<PrintOrder>): Promise<PrintOrder | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -813,6 +821,41 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWaitlistEntry(id: number): Promise<void> {
     await db.delete(artworkWaitlist).where(eq(artworkWaitlist.id, id));
+  }
+
+  // ─── Print Orders ─────────────────────────────────────────────────────────────
+  async createPrintOrder(data: { artworkId: number; buyerName: string; buyerEmail: string; printfulProductId: string; variantId: string; variantLabel: string; retailPrice: string; shippingAddress?: string; stripeSessionId?: string }): Promise<PrintOrder> {
+    const [result] = await db.insert(printOrders).values({
+      artworkId: data.artworkId,
+      buyerName: data.buyerName,
+      buyerEmail: data.buyerEmail,
+      printfulProductId: data.printfulProductId,
+      variantId: data.variantId,
+      variantLabel: data.variantLabel,
+      retailPrice: data.retailPrice,
+      shippingAddress: data.shippingAddress || null,
+      stripeSessionId: data.stripeSessionId || null,
+    }).returning();
+    return result;
+  }
+
+  async getPrintOrders(): Promise<PrintOrder[]> {
+    return db.select().from(printOrders).orderBy(desc(printOrders.createdAt));
+  }
+
+  async getPrintOrderById(id: number): Promise<PrintOrder | undefined> {
+    const [result] = await db.select().from(printOrders).where(eq(printOrders.id, id));
+    return result;
+  }
+
+  async getPrintOrderBySessionId(sessionId: string): Promise<PrintOrder | undefined> {
+    const [result] = await db.select().from(printOrders).where(eq(printOrders.stripeSessionId, sessionId));
+    return result;
+  }
+
+  async updatePrintOrder(id: number, data: Partial<PrintOrder>): Promise<PrintOrder | undefined> {
+    const [result] = await db.update(printOrders).set(data).where(eq(printOrders.id, id)).returning();
+    return result;
   }
 }
 

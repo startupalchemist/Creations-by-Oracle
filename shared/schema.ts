@@ -350,6 +350,10 @@ export const artworks = pgTable("artworks", {
   pageRegistryId: integer("page_registry_id"),
   viewCount: integer("view_count").notNull().default(0),
   publishedAt: timestamp("published_at"),
+  // Printful print-on-demand
+  printsAvailable: boolean("prints_available").notNull().default(false),
+  printfulProductId: text("printful_product_id"),
+  printMarkupPercent: integer("print_markup_percent").notNull().default(40),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -544,3 +548,33 @@ export const insertArtworkWaitlistSchema = createInsertSchema(artworkWaitlist).o
 
 export type InsertArtworkWaitlist = z.infer<typeof insertArtworkWaitlistSchema>;
 export type ArtworkWaitlist = typeof artworkWaitlist.$inferSelect;
+
+// ─── Print Orders (Printful) ──────────────────────────────────────────────────
+
+export const printOrders = pgTable("print_orders", {
+  id: serial("id").primaryKey(),
+  artworkId: integer("artwork_id").notNull().references(() => artworks.id),
+  buyerName: text("buyer_name").notNull(),
+  buyerEmail: text("buyer_email").notNull(),
+  printfulProductId: text("printful_product_id").notNull(),
+  variantId: text("variant_id").notNull(),
+  variantLabel: text("variant_label").notNull(),
+  retailPrice: numeric("retail_price", { precision: 10, scale: 2 }).notNull(),
+  printfulOrderId: text("printful_order_id"),
+  status: text("status").notNull().default("pending"),
+  shippingAddress: text("shipping_address"),
+  stripeSessionId: text("stripe_session_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPrintOrderSchema = createInsertSchema(printOrders).omit({
+  id: true,
+  createdAt: true,
+  printfulOrderId: true,
+  status: true,
+});
+
+export type InsertPrintOrder = z.infer<typeof insertPrintOrderSchema>;
+export type PrintOrder = typeof printOrders.$inferSelect;
+
+export const printOrderStatuses = ["pending", "paid", "submitted", "fulfilled", "cancelled"] as const;

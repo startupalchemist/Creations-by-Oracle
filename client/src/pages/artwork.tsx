@@ -5,7 +5,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, ShoppingBag, Palette, CheckCircle, Loader2, Share2, Eye, X, ZoomIn } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Palette, CheckCircle, Loader2, Share2, Eye, X, ZoomIn, Printer, ChevronDown } from "lucide-react";
 import type { Artwork } from "@shared/schema";
 
 function useSessionId() {
@@ -90,6 +90,169 @@ function SoldWaitlistPanel({ artwork }: { artwork: Artwork }) {
             </Link>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+interface PrintVariant {
+  id: string;
+  label: string;
+  description?: string;
+  retailPrice: string;
+  preview_url?: string | null;
+}
+
+function PrintSection({ artwork }: { artwork: Artwork }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<PrintVariant | null>(null);
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerEmail, setBuyerEmail] = useState("");
+  const [shippingStreet, setShippingStreet] = useState("");
+  const [shippingCity, setShippingCity] = useState("");
+  const [shippingState, setShippingState] = useState("");
+  const [shippingZip, setShippingZip] = useState("");
+  const [shippingCountry, setShippingCountry] = useState("United States");
+  const [showCheckoutForm, setShowCheckoutForm] = useState(false);
+  const [printPurchased, setPrintPurchased] = useState(false);
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("print_purchased") === "true") setPrintPurchased(true);
+  }, []);
+
+  const { data, isLoading } = useQuery<{ available: boolean; variants: PrintVariant[] }>({
+    queryKey: ["/api/artworks", artwork.id, "print-variants"],
+    queryFn: () => fetch(`/api/artworks/${artwork.id}/print-variants`).then((r) => r.json()),
+    enabled: !!artwork.printsAvailable,
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/print-checkout", {
+        artworkId: artwork.id,
+        variantId: selectedVariant?.id,
+        variantLabel: selectedVariant?.label,
+        retailPrice: selectedVariant?.retailPrice,
+        buyerName,
+        buyerEmail,
+        shippingAddress: { street: shippingStreet, city: shippingCity, state: shippingState, zip: shippingZip, country: shippingCountry },
+      }),
+    onSuccess: async (res) => {
+      const json = await res.json();
+      if (json.url) window.location.href = json.url;
+    },
+    onError: () => {
+      toast({ title: "Print checkout failed", description: "Please try again.", variant: "destructive" });
+    },
+  });
+
+  if (!artwork.printsAvailable) return null;
+  if (isLoading) return null;
+  if (!data?.available || !data.variants.length) return null;
+
+  return (
+    <div className="mt-8 border border-white/8 rounded-sm overflow-hidden" data-testid="section-prints">
+      {printPurchased && (
+        <div className="bg-[#C084FC]/10 border-b border-[#C084FC]/20 px-5 py-3 flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-[#C084FC]" />
+          <span className="text-sm text-[#C084FC]">Print order confirmed! You'll receive a shipping update by email.</span>
+        </div>
+      )}
+      <button
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/3 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+        data-testid="button-prints-toggle"
+      >
+        <div className="flex items-center gap-3">
+          <Printer className="w-4 h-4 text-[#C084FC]" />
+          <div className="text-left">
+            <p className="text-sm text-[#F5F5F7]">Limited Edition Prints</p>
+            <p className="text-[10px] text-[#B3B3B8]/40 uppercase tracking-[0.15em]">Museum-quality reproduction</p>
+          </div>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-[#B3B3B8]/40 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 border-t border-white/5 pt-4 space-y-4">
+          <div className="grid grid-cols-1 gap-2" data-testid="div-print-variants">
+            {data.variants.map((v) => (
+              <button
+                key={v.id}
+                className={`flex items-center justify-between p-3 rounded-sm border transition-colors text-left ${selectedVariant?.id === v.id ? "border-[#C084FC] bg-[#C084FC]/5" : "border-white/10 hover:border-white/25"}`}
+                onClick={() => { setSelectedVariant(v); setShowCheckoutForm(true); }}
+                data-testid={`button-print-variant-${v.id}`}
+              >
+                <div>
+                  <p className="text-[#F5F5F7] text-sm font-medium">{v.label}</p>
+                  {v.description && <p className="text-[#B3B3B8]/50 text-xs mt-0.5">{v.description}</p>}
+                </div>
+                <span className="text-[#C084FC] text-sm font-semibold">${parseFloat(v.retailPrice).toFixed(2)}</span>
+              </button>
+            ))}
+          </div>
+
+          {showCheckoutForm && selectedVariant && (
+            <div className="space-y-3 border border-white/8 rounded-sm p-4" style={{ background: "rgba(255,255,255,0.02)" }}>
+              <p className="text-[#B3B3B8]/50 text-xs">Enter your details — you'll be redirected to secure checkout.</p>
+              <Input
+                value={buyerName}
+                onChange={(e) => setBuyerName(e.target.value)}
+                placeholder="Your name"
+                className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                data-testid="input-print-buyer-name"
+              />
+              <Input
+                type="email"
+                value={buyerEmail}
+                onChange={(e) => setBuyerEmail(e.target.value)}
+                placeholder="Your email"
+                className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                data-testid="input-print-buyer-email"
+              />
+              <p className="text-[9px] uppercase tracking-[0.18em] text-[#B3B3B8]/40 pt-1">Shipping Address</p>
+              <Input
+                value={shippingStreet}
+                onChange={(e) => setShippingStreet(e.target.value)}
+                placeholder="Street address"
+                className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                data-testid="input-print-street"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input value={shippingCity} onChange={(e) => setShippingCity(e.target.value)} placeholder="City" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-print-city" />
+                <Input value={shippingState} onChange={(e) => setShippingState(e.target.value)} placeholder="State" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-print-state" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input value={shippingZip} onChange={(e) => setShippingZip(e.target.value)} placeholder="Postal code" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-print-zip" />
+                <Input value={shippingCountry} onChange={(e) => setShippingCountry(e.target.value)} placeholder="Country" className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-print-country" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button
+                  className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-auto py-2.5 flex-1"
+                  disabled={!buyerName.trim() || !buyerEmail.trim() || !shippingStreet.trim() || !shippingCity.trim() || !shippingZip.trim() || checkoutMutation.isPending}
+                  onClick={() => checkoutMutation.mutate()}
+                  data-testid="button-print-checkout"
+                >
+                  {checkoutMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Printer className="w-3.5 h-3.5 mr-1" />}
+                  Order Print — ${parseFloat(selectedVariant.retailPrice).toFixed(2)}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="text-[#B3B3B8] text-xs border border-white/10 px-3 h-auto"
+                  onClick={() => { setShowCheckoutForm(false); setSelectedVariant(null); }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <p className="text-[#B3B3B8]/25 text-[10px]">
+            Printed and shipped by our fulfillment partner. Museum-quality archival paper and inks.
+          </p>
+        </div>
       )}
     </div>
   );
@@ -492,6 +655,8 @@ export default function ArtworkPage() {
               <p className="text-[#B3B3B8]/25 text-[10px] mt-4 leading-relaxed">
                 All works ship with a certificate of authenticity. Shipping quoted at checkout.
               </p>
+
+              <PrintSection artwork={artwork} />
             </div>
           </div>
         </div>

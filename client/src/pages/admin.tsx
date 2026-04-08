@@ -2084,19 +2084,55 @@ function IntegrationsTab({ toast }: { toast: any }) {
     );
   }
 
+  const { data: printfulStatus } = useQuery<{ configured: boolean; store: { id: number; name: string; website: string } | null }>({
+    queryKey: ["/api/printful/status"],
+    queryFn: () => fetch("/api/printful/status", { credentials: "include" }).then((r) => r.json()),
+  });
+
   return (
     <div data-testid="panel-integrations">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-[#5D3FD3] font-semibold mb-1">Integrations</p>
-          <h2 className="text-xl font-bold text-[#F5F5F7] uppercase tracking-tight">Webhooks</h2>
-          <p className="text-[#B3B3B8]/60 text-sm mt-1">Connect your CRM to Zapier, Make, or custom systems</p>
+          <h2 className="text-xl font-bold text-[#F5F5F7] uppercase tracking-tight">Integrations</h2>
+          <p className="text-[#B3B3B8]/60 text-sm mt-1">Connect your shop to external services</p>
         </div>
         {!showAdd && (
           <Button onClick={() => { setShowAdd(true); setEditingId(null); setForm({ name: "", url: "", events: [], active: true }); }} data-testid="button-add-webhook">
             <Plus className="w-4 h-4 mr-2" /> Add Webhook
           </Button>
         )}
+      </div>
+
+      {/* Printful Status Card */}
+      <div className="mb-8 p-5 rounded-md bg-[#141416] border border-white/5" data-testid="card-printful-status">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <Layers className="w-5 h-5 text-[#B3B3B8]/50" />
+            <div>
+              <p className="text-sm font-medium text-[#F5F5F7]">Printful Print-on-Demand</p>
+              <p className="text-[10px] text-[#B3B3B8]/40 mt-0.5">Automatic print fulfillment for artworks</p>
+            </div>
+          </div>
+          <Badge className={`border-0 no-default-hover-elevate no-default-active-elevate text-xs ${printfulStatus?.configured ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"}`}>
+            {printfulStatus?.configured ? "Connected" : "Not configured"}
+          </Badge>
+        </div>
+        {printfulStatus?.configured && printfulStatus.store ? (
+          <div className="text-xs text-[#B3B3B8]/60">
+            <span className="text-[#F5F5F7]">{printfulStatus.store.name}</span>
+            {printfulStatus.store.website && <span className="ml-2 text-[#B3B3B8]/40">— {printfulStatus.store.website}</span>}
+          </div>
+        ) : (
+          <p className="text-xs text-[#B3B3B8]/40">
+            Set the <code className="text-[#C084FC] bg-[#C084FC]/10 px-1 rounded">PRINTFUL_API_KEY</code> environment variable to enable automatic print fulfillment. Without it, print variants are still shown and orders are collected — Printful submission is skipped.
+          </p>
+        )}
+      </div>
+
+      <div className="mb-4">
+        <p className="text-xs uppercase tracking-[0.2em] text-[#B3B3B8]/40 font-medium">Webhooks</p>
+        <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Connect to Zapier, Make, or custom systems</p>
       </div>
 
       {showAdd && (
@@ -4587,6 +4623,14 @@ function ShopTab({ toast }: { toast: any }) {
                   {artwork.medium && <p className="text-[#B3B3B8]/40 text-xs">{artwork.medium}</p>}
                   {artwork.price && <p className="text-[#C084FC] text-sm">${parseFloat(String(artwork.price)).toLocaleString()}</p>}
                 </div>
+                <div className="flex items-center gap-2 py-1">
+                  <Switch
+                    checked={!!artwork.printsAvailable}
+                    onCheckedChange={(v) => updateArtwork.mutate({ id: artwork.id, data: { printsAvailable: v } })}
+                    data-testid={`switch-prints-${artwork.id}`}
+                  />
+                  <label className="text-[#B3B3B8]/50 text-[10px]">Prints available</label>
+                </div>
                 <div className="flex gap-1.5 flex-wrap">
                   <Button variant="ghost" className="text-[#B3B3B8] text-[10px] px-2 py-1 h-auto border border-white/10" onClick={() => startEdit(artwork)} data-testid={`button-edit-artwork-${artwork.id}`}>
                     <Pencil className="w-3 h-3 mr-1" />Edit
@@ -4631,65 +4675,162 @@ function parseShippingAddress(raw: string | null | undefined): string {
 }
 
 function OrdersTab({ toast }: { toast: any }) {
+  const [subTab, setSubTab] = useState<"originals" | "prints">("originals");
   const { data: orders, isLoading } = useQuery<any[]>({
     queryKey: ["/api/orders"],
+  });
+  const { data: printOrders, isLoading: printLoading } = useQuery<any[]>({
+    queryKey: ["/api/print-orders"],
+    queryFn: () => fetch("/api/print-orders", { credentials: "include" }).then((r) => r.json()),
+  });
+
+  const updatePrintOrder = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PATCH", `/api/print-orders/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/print-orders"] });
+      toast({ title: "Print order updated" });
+    },
   });
 
   return (
     <div className="space-y-4" data-testid="tab-orders-content">
       <div>
         <h2 className="text-lg font-medium text-[#F5F5F7]">Orders</h2>
-        <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Artwork purchases and sales records</p>
+        <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Artwork purchases and print order records</p>
       </div>
-      {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" /></div>
-      ) : !orders?.length ? (
-        <div className="text-center py-16 border border-white/8 rounded-sm">
-          <DollarSign className="w-8 h-8 text-white/10 mx-auto mb-3" />
-          <p className="text-[#B3B3B8]/40 text-sm">No orders yet.</p>
-          <p className="text-[#B3B3B8]/25 text-xs mt-1">Orders will appear here when collectors purchase through your shop.</p>
-        </div>
-      ) : (
-        <div className="border border-white/8 rounded-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/8" style={{ background: "rgba(255,255,255,0.02)" }}>
-                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Artwork</th>
-                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Buyer</th>
-                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Shipping</th>
-                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Amount</th>
-                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Status</th>
-                <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order: any) => (
-                <tr key={order.id} className="border-b border-white/5" data-testid={`row-order-${order.id}`}>
-                  <td className="px-4 py-3 text-[#F5F5F7] text-xs">Artwork #{order.artworkId}</td>
-                  <td className="px-4 py-3">
-                    <p className="text-[#F5F5F7] text-xs" data-testid={`text-order-buyer-${order.id}`}>{order.buyerName}</p>
-                    <p className="text-[#B3B3B8]/40 text-[10px]">{order.buyerEmail}</p>
-                  </td>
-                  <td className="px-4 py-3 max-w-[180px]">
-                    <p className="text-[#B3B3B8]/60 text-[10px] leading-relaxed whitespace-pre-line" data-testid={`text-order-shipping-${order.id}`}>
-                      {parseShippingAddress(order.shippingAddress)}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 text-[#C084FC] text-xs">${parseFloat(String(order.amount || 0)).toLocaleString()}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${order.status === "paid" ? "bg-green-500/20 text-green-400" : order.status === "fulfilled" ? "bg-blue-500/20 text-blue-400" : "bg-amber-500/20 text-amber-400"}`} data-testid={`badge-order-status-${order.id}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-[#B3B3B8]/40 text-xs">{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="px-4 py-3 border-t border-white/5">
-            <p className="text-[#B3B3B8]/25 text-[10px]">{orders.length} order{orders.length !== 1 ? "s" : ""}</p>
+
+      <div className="flex gap-2 border-b border-white/5 pb-3">
+        <button
+          onClick={() => setSubTab("originals")}
+          className={`px-4 py-1.5 text-xs rounded-sm transition-colors ${subTab === "originals" ? "bg-[#C084FC]/20 text-[#C084FC]" : "text-[#B3B3B8]/50 hover:text-[#B3B3B8]"}`}
+          data-testid="subtab-originals"
+        >
+          Original Works {orders?.length ? `(${orders.length})` : ""}
+        </button>
+        <button
+          onClick={() => setSubTab("prints")}
+          className={`px-4 py-1.5 text-xs rounded-sm transition-colors ${subTab === "prints" ? "bg-[#C084FC]/20 text-[#C084FC]" : "text-[#B3B3B8]/50 hover:text-[#B3B3B8]"}`}
+          data-testid="subtab-prints"
+        >
+          Print Orders {printOrders?.length ? `(${printOrders.length})` : ""}
+        </button>
+      </div>
+
+      {subTab === "originals" && (
+        isLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" /></div>
+        ) : !orders?.length ? (
+          <div className="text-center py-16 border border-white/8 rounded-sm">
+            <DollarSign className="w-8 h-8 text-white/10 mx-auto mb-3" />
+            <p className="text-[#B3B3B8]/40 text-sm">No orders yet.</p>
+            <p className="text-[#B3B3B8]/25 text-xs mt-1">Orders will appear here when collectors purchase through your shop.</p>
           </div>
-        </div>
+        ) : (
+          <div className="border border-white/8 rounded-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/8" style={{ background: "rgba(255,255,255,0.02)" }}>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Artwork</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Buyer</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Shipping</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Amount</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Status</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order: any) => (
+                  <tr key={order.id} className="border-b border-white/5" data-testid={`row-order-${order.id}`}>
+                    <td className="px-4 py-3 text-[#F5F5F7] text-xs">Artwork #{order.artworkId}</td>
+                    <td className="px-4 py-3">
+                      <p className="text-[#F5F5F7] text-xs" data-testid={`text-order-buyer-${order.id}`}>{order.buyerName}</p>
+                      <p className="text-[#B3B3B8]/40 text-[10px]">{order.buyerEmail}</p>
+                    </td>
+                    <td className="px-4 py-3 max-w-[180px]">
+                      <p className="text-[#B3B3B8]/60 text-[10px] leading-relaxed whitespace-pre-line" data-testid={`text-order-shipping-${order.id}`}>
+                        {parseShippingAddress(order.shippingAddress)}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-[#C084FC] text-xs">${parseFloat(String(order.amount || 0)).toLocaleString()}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${order.status === "paid" ? "bg-green-500/20 text-green-400" : order.status === "fulfilled" ? "bg-blue-500/20 text-blue-400" : "bg-amber-500/20 text-amber-400"}`} data-testid={`badge-order-status-${order.id}`}>
+                        {order.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-[#B3B3B8]/40 text-xs">{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-4 py-3 border-t border-white/5">
+              <p className="text-[#B3B3B8]/25 text-[10px]">{orders.length} order{orders.length !== 1 ? "s" : ""}</p>
+            </div>
+          </div>
+        )
+      )}
+
+      {subTab === "prints" && (
+        printLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" /></div>
+        ) : !printOrders?.length ? (
+          <div className="text-center py-16 border border-white/8 rounded-sm">
+            <Layers className="w-8 h-8 text-white/10 mx-auto mb-3" />
+            <p className="text-[#B3B3B8]/40 text-sm">No print orders yet.</p>
+            <p className="text-[#B3B3B8]/25 text-xs mt-1">Enable prints on artworks in the Shop tab to start selling limited-edition prints.</p>
+          </div>
+        ) : (
+          <div className="border border-white/8 rounded-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/8" style={{ background: "rgba(255,255,255,0.02)" }}>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Artwork</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Print</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Buyer</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Amount</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Status</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Printful #</th>
+                  <th className="text-left px-4 py-3 text-[#B3B3B8]/50 text-xs uppercase tracking-[0.15em] font-medium">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {printOrders.map((po: any) => (
+                  <tr key={po.id} className="border-b border-white/5" data-testid={`row-print-order-${po.id}`}>
+                    <td className="px-4 py-3 text-[#F5F5F7] text-xs">#{po.artworkId}</td>
+                    <td className="px-4 py-3 text-[#B3B3B8] text-xs max-w-[140px]">
+                      <p className="truncate">{po.variantLabel}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-[#F5F5F7] text-xs">{po.buyerName}</p>
+                      <p className="text-[#B3B3B8]/40 text-[10px]">{po.buyerEmail}</p>
+                    </td>
+                    <td className="px-4 py-3 text-[#C084FC] text-xs">${parseFloat(String(po.retailPrice || 0)).toFixed(2)}</td>
+                    <td className="px-4 py-3">
+                      <Select
+                        value={po.status}
+                        onValueChange={(v) => updatePrintOrder.mutate({ id: po.id, status: v })}
+                      >
+                        <SelectTrigger className="h-7 text-[10px] bg-transparent border-white/10 w-28" data-testid={`select-print-status-${po.id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-[#141416] border-white/10">
+                          {["pending", "paid", "submitted", "fulfilled", "cancelled"].map((s) => (
+                            <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-4 py-3 text-[#B3B3B8]/40 text-[10px]">{po.printfulOrderId || "—"}</td>
+                    <td className="px-4 py-3 text-[#B3B3B8]/40 text-xs">{po.createdAt ? new Date(po.createdAt).toLocaleDateString() : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-4 py-3 border-t border-white/5">
+              <p className="text-[#B3B3B8]/25 text-[10px]">{printOrders.length} print order{printOrders.length !== 1 ? "s" : ""}</p>
+            </div>
+          </div>
+        )
       )}
     </div>
   );

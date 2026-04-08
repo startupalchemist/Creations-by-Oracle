@@ -9,6 +9,7 @@ import { authMiddleware, requireRole, hashPassword, verifyPassword, createSessio
 import crypto from "crypto";
 import OpenAI from "openai";
 import { getResendClient } from "./resend";
+import { isPrintfulConfigured, getPrintfulStoreInfo, getPrintfulProduct, createPrintfulOrder, PRINT_VARIANT_TEMPLATES } from "./printful";
 
 async function fireWebhooks(event: string, payload: Record<string, any>) {
   try {
@@ -2151,7 +2152,7 @@ Generate only the requested fields. Respond in this exact JSON format:
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid artwork ID" });
-      const fields = ["title", "medium", "dimensions", "year", "description", "imageUrl", "enhancedImageUrl", "price", "forSale", "sold", "status", "category", "featured", "seoTitle", "seoDescription", "seoKeywords", "stripeProductId", "stripePriceId"];
+      const fields = ["title", "medium", "dimensions", "year", "description", "imageUrl", "enhancedImageUrl", "price", "forSale", "sold", "status", "category", "featured", "seoTitle", "seoDescription", "seoKeywords", "stripeProductId", "stripePriceId", "printsAvailable", "printfulProductId", "printMarkupPercent"];
       const updates: Record<string, any> = {};
       for (const f of fields) {
         if (req.body[f] !== undefined) updates[f] = req.body[f];
@@ -2294,6 +2295,160 @@ Generate only the requested fields. Respond in this exact JSON format:
       res.json({ message: "Removed" });
     } catch {
       res.status(500).json({ message: "Failed to remove entry" });
+    }
+  });
+
+  // ─── Printful / Print-on-Demand ────────────────────────────────────────────
+
+  app.get("/api/printful/status", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
+    try {
+      const configured = isPrintfulConfigured();
+      if (!configured) return res.json({ configured: false, store: null });
+      const store = await getPrintfulStoreInfo();
+      res.json({ configured, store });
+    } catch (e: any) {
+      res.json({ configured: false, store: null, error: e?.message });
+    }
+  });
+
+  app.get("/api/artworks/:id/print-variants", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid artwork ID" });
+      const artwork = await storage.getArtworkById(id);
+      if (!artwork) return res.status(404).json({ message: "Not found" });
+      if (!artwork.printsAvailable) return res.json({ available: false, variants: [] });
+
+      // If artwork has a Printful product linked, fetch live variants
+      if (artwork.printfulProductId && isPrintfulConfigured()) {
+        const product = await getPrintfulProduct(artwork.printfulProductId);
+        if (product) {
+          const markup = (artwork.printMarkupPercent ?? 40) / 100;
+          const variants = product.variants.map((v) => ({
+            id: String(v.id),
+            label: v.name,
+            retailPrice: parseFloat(v.retail_price).toFixed(2),
+            preview_url: v.preview_url || null,
+          }));
+          return res.json({ available: true, variants, productName: product.name });
+        }
+      }
+
+      // Otherwise return template variants with markup applied
+      const markup = (artwork.printMarkupPercent ?? 40) / 100;
+      const variants = PRINT_VARIANT_TEMPLATES.map((t) => {
+        const retail = t.baseCost * (1 + markup);
+        return {
+          id: String(t.printfulVariantId),
+          label: t.label,
+          description: t.description,
+          retailPrice: retail.toFixed(2),
+          preview_url: null,
+        };
+      });
+      return res.json({ available: true, variants });
+    } catch (e: any) {
+      res.status(500).json({ message: "Failed to fetch print variants", error: e?.message });
+    }
+  });
+
+  app.post("/api/print-checkout", async (req, res) => {
+    try {
+      const { artworkId, variantId, variantLabel, retailPrice, buyerName, buyerEmail, shippingAddress } = req.body;
+      if (!artworkId || !variantId || !buyerName || !buyerEmail || !retailPrice) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const artwork = await storage.getArtworkById(parseInt(artworkId));
+      if (!artwork || !artwork.printsAvailable) {
+        return res.status(400).json({ message: "Prints not available for this artwork" });
+      }
+
+      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeKey) {
+        return res.status(500).json({ message: "Stripe not configured" });
+      }
+
+      const Stripe = require("stripe");
+      const stripe = new Stripe(stripeKey);
+      const amountCents = Math.round(parseFloat(retailPrice) * 100);
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DEPLOYMENT_URL
+        ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+        : "http://localhost:5000";
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: `${artwork.title} — ${variantLabel} (Print)`,
+                description: `Fine art print of "${artwork.title}" by Oracle`,
+                images: artwork.imageUrl ? [artwork.imageUrl.startsWith("http") ? artwork.imageUrl : `${baseUrl}${artwork.imageUrl}`] : [],
+              },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        customer_email: buyerEmail,
+        success_url: `${baseUrl}/shop/${artwork.slug}?print_purchased=true`,
+        cancel_url: `${baseUrl}/shop/${artwork.slug}`,
+        metadata: {
+          artworkId: String(artworkId),
+          variantId: String(variantId),
+          variantLabel,
+          retailPrice: String(retailPrice),
+          buyerName,
+          buyerEmail,
+          orderType: "print",
+          shippingAddress: shippingAddress ? JSON.stringify(shippingAddress) : "",
+        },
+      });
+
+      await storage.createPrintOrder({
+        artworkId: parseInt(artworkId),
+        buyerName,
+        buyerEmail,
+        printfulProductId: artwork.printfulProductId || "manual",
+        variantId: String(variantId),
+        variantLabel,
+        retailPrice: String(parseFloat(retailPrice).toFixed(2)),
+        shippingAddress: shippingAddress ? JSON.stringify(shippingAddress) : undefined,
+        stripeSessionId: session.id,
+      });
+
+      res.json({ url: session.url });
+    } catch (e: any) {
+      res.status(500).json({ message: "Failed to create print checkout", error: e?.message });
+    }
+  });
+
+  app.get("/api/print-orders", authMiddleware, requireRole("root", "admin"), async (_req, res) => {
+    try {
+      const orders = await storage.getPrintOrders();
+      res.json(orders);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch print orders" });
+    }
+  });
+
+  app.patch("/api/print-orders/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status, printfulOrderId } = req.body;
+      const updates: Record<string, any> = {};
+      if (status) updates.status = status;
+      if (printfulOrderId) updates.printfulOrderId = printfulOrderId;
+      const order = await storage.updatePrintOrder(id, updates);
+      if (!order) return res.status(404).json({ message: "Print order not found" });
+      res.json(order);
+    } catch {
+      res.status(500).json({ message: "Failed to update print order" });
     }
   });
 
@@ -2656,6 +2811,53 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
       if (event.type === "checkout.session.completed") {
         const session = event.data.object;
+        const orderType = session.metadata?.orderType;
+
+        // Handle print order fulfillment
+        if (orderType === "print") {
+          try {
+            const printOrder = await storage.getPrintOrderBySessionId(session.id);
+            if (printOrder) {
+              await storage.updatePrintOrder(printOrder.id, { status: "paid" });
+              // Attempt to submit to Printful if configured and shipping address available
+              const shippingRaw = session.metadata?.shippingAddress;
+              if (isPrintfulConfigured() && shippingRaw && shippingRaw !== "") {
+                try {
+                  const addr = JSON.parse(shippingRaw);
+                  const artwork = await storage.getArtworkById(printOrder.artworkId);
+                  const imageUrl = artwork?.enhancedImageUrl || artwork?.imageUrl || "";
+                  if (imageUrl && addr.street) {
+                    const pfOrder = await createPrintfulOrder({
+                      variantId: parseInt(printOrder.variantId),
+                      quantity: 1,
+                      retailPrice: String(printOrder.retailPrice),
+                      recipient: {
+                        name: printOrder.buyerName,
+                        address1: addr.street,
+                        city: addr.city,
+                        state_code: addr.state || "NY",
+                        zip: addr.zip,
+                        country_code: addr.country === "United States" ? "US" : (addr.country || "US"),
+                        email: printOrder.buyerEmail,
+                      },
+                      imageUrl: imageUrl.startsWith("http") ? imageUrl : `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:5000"}${imageUrl}`,
+                    });
+                    await storage.updatePrintOrder(printOrder.id, {
+                      status: "submitted",
+                      printfulOrderId: String(pfOrder.id),
+                    });
+                  }
+                } catch (pfErr: any) {
+                  console.error("Printful order submit error:", pfErr?.message);
+                }
+              }
+            }
+          } catch (poErr: any) {
+            console.error("Print order webhook error:", poErr?.message);
+          }
+          return res.json({ received: true });
+        }
+
         const artworkId = parseInt(session.metadata?.artworkId);
         if (artworkId) {
           await storage.updateArtwork(artworkId, { sold: true });
