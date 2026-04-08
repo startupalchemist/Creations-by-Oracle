@@ -2216,7 +2216,10 @@ Generate only the requested fields. Respond in this exact JSON format:
                       baseUrl,
                     }),
                   });
-                } catch (_) {}
+                } catch (sendErr: unknown) {
+                  const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+                  console.error(`Waitlist send failed for ${entry.email}:`, msg);
+                }
               }
             }
           } catch (wlErr: unknown) {
