@@ -121,6 +121,7 @@ function ProvenanceSection({ artwork }: { artwork: Artwork }) {
             <div data-testid="text-edition-info">
               <p className="text-[9px] uppercase tracking-[0.2em] text-[#B3B3B8]/30 mb-1">Edition</p>
               <p className="text-[#B3B3B8]/70 text-sm leading-relaxed">{artwork.editionInfo}</p>
+              <p className="text-[#C084FC]/50 text-[10px] mt-2" data-testid="text-coa-note">Includes a Certificate of Authenticity signed by the artist.</p>
             </div>
           )}
           {artwork.provenanceNotes && (

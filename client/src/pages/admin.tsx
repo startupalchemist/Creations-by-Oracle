@@ -5444,10 +5444,13 @@ function ExhibitionsAdmin({ toast }: { toast: any }) {
                     <Input value={editing.showName} onChange={(e) => setEditing((t) => t ? { ...t, showName: e.target.value } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
                     <Input type="number" value={editing.year} onChange={(e) => setEditing((t) => t ? { ...t, year: parseInt(e.target.value) || t.year } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
                   </div>
-                  <Select value={editing.showType} onValueChange={(v) => setEditing((t) => t ? { ...t, showType: v } : t)}>
-                    <SelectTrigger className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-40"><SelectValue /></SelectTrigger>
-                    <SelectContent>{showTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-3">
+                    <Select value={editing.showType} onValueChange={(v) => setEditing((t) => t ? { ...t, showType: v } : t)}>
+                      <SelectTrigger className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-40"><SelectValue /></SelectTrigger>
+                      <SelectContent>{showTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Input type="number" value={editing.displayOrder} onChange={(e) => setEditing((t) => t ? { ...t, displayOrder: parseInt(e.target.value) || 0 } : t)} placeholder="Order" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-24" data-testid={`input-exhibition-edit-order-${editing.id}`} />
+                  </div>
                   <div className="flex gap-2 pt-1">
                     <Button onClick={() => updateMutation.mutate({ id: editing.id, venueName: editing.venueName, city: editing.city, year: editing.year, showName: editing.showName, showType: editing.showType, displayOrder: editing.displayOrder })} disabled={updateMutation.isPending} className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-8 px-4">
                       {updateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
