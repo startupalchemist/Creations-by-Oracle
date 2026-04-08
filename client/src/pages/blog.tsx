@@ -110,7 +110,7 @@ export default function Blog() {
         ) : (
           <div className="text-center py-20" data-testid="blog-empty-state">
             <p className="text-[#B3B3B8]/50 text-sm mb-6">Articles and studio notes coming soon.</p>
-            <Link href="/contact?utm_source=website&utm_medium=blog_cta&utm_campaign=commission">
+            <Link href="/commission">
               <Button
                 className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.15em] font-semibold px-8"
                 data-testid="button-blog-cta"
@@ -136,7 +136,7 @@ export default function Blog() {
               { label: "3D Installations", href: "/shop?category=3D+Installation" },
               { label: "Copper Sculpture", href: "/shop?category=Sculpture" },
               { label: "Shop All Works", href: "/shop" },
-              { label: "Commission a Piece", href: "/contact" },
+              { label: "Commission a Piece", href: "/commission" },
             ].map((link) => (
               <Link key={link.href} href={link.href}>
                 <span className="text-xs text-[#C084FC]/70 hover:text-[#C084FC] transition-colors cursor-pointer">

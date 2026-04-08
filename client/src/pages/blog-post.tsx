@@ -368,7 +368,7 @@ export default function BlogPost() {
 
         <div className="mt-16 pt-8 border-t border-white/5">
           <div className="flex flex-wrap items-center justify-between gap-6">
-            <Link href="/contact?utm_source=blog&utm_medium=post_cta&utm_campaign=commission">
+            <Link href="/commission">
               <Button
                 className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.15em] font-semibold px-8"
                 data-testid="button-post-cta"

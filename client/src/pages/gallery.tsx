@@ -162,7 +162,7 @@ export default function Gallery() {
               Each commission begins with a conversation. Portrait, abstract canvas, copper sculpture — all mediums available for bespoke work.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/contact?utm_source=gallery&utm_medium=bottom_cta&utm_campaign=commission">
+              <Link href="/commission">
                 <Button
                   className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold px-10 py-3 h-auto"
                   data-testid="button-gallery-cta"
