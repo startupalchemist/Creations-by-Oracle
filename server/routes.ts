@@ -2195,14 +2195,13 @@ Generate only the requested fields. Respond in this exact JSON format:
     try {
       const { imageData, filename } = req.body;
       if (!imageData) return res.status(400).json({ message: "imageData is required" });
-      const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
+      const base64Data = imageData.replace(/^data:image\/[\w+]+;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
-      const ext = imageData.match(/data:image\/(\w+);/)?.[1] || "jpg";
+      const ext = imageData.match(/data:image\/([\w+]+);/)?.[1] || "jpg";
       const safeName = (filename || `upload-${Date.now()}`).replace(/[^a-zA-Z0-9-_]/g, "-") + "." + ext;
-      const uploadDir = path.join(process.cwd(), "client", "public", "uploads");
+      const uploadDir = path.resolve(process.cwd(), "uploads");
       if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-      const filePath = path.join(uploadDir, safeName);
-      fs.writeFileSync(filePath, buffer);
+      fs.writeFileSync(path.join(uploadDir, safeName), buffer);
       res.json({ url: `/uploads/${safeName}` });
     } catch (e: any) {
       res.status(500).json({ message: "Upload failed", error: e?.message });
@@ -2628,9 +2627,24 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
   });
 
   // ─── Public Commission Reference Photo Upload ────────────────────
-  // No auth required — strict validation: images only, max 5 MB
+  // No auth required — strict validation: images only, max 5 MB, rate limited
+
+  const commissionUploadRateMap = new Map<string, { count: number; resetAt: number }>();
+  const COMMISSION_UPLOAD_LIMIT = 10; // max uploads per IP per hour
+  const COMMISSION_UPLOAD_WINDOW_MS = 60 * 60 * 1000;
 
   app.post("/api/commission/upload", async (req, res) => {
+    const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const entry = commissionUploadRateMap.get(ip);
+    if (entry && now < entry.resetAt) {
+      if (entry.count >= COMMISSION_UPLOAD_LIMIT) {
+        return res.status(429).json({ message: "Too many uploads. Please wait before trying again." });
+      }
+      entry.count++;
+    } else {
+      commissionUploadRateMap.set(ip, { count: 1, resetAt: now + COMMISSION_UPLOAD_WINDOW_MS });
+    }
     try {
       const { imageData, filename } = req.body;
       if (!imageData || typeof imageData !== "string") {
@@ -2658,7 +2672,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       const buffer = Buffer.from(base64Data, "base64");
       const ext = mimeMatch[1].split("/")[1].replace("+", "");
       const safeName = `ref-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const uploadDir = path.join(process.cwd(), "client", "public", "uploads");
+      const uploadDir = path.resolve(process.cwd(), "uploads");
       if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
       fs.writeFileSync(path.join(uploadDir, safeName), buffer);
       res.json({ url: `/uploads/${safeName}` });
