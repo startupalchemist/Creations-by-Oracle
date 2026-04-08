@@ -20,6 +20,7 @@ const Rate = lazy(() => import("@/pages/rate"));
 const Gallery = lazy(() => import("@/pages/gallery"));
 const Shop = lazy(() => import("@/pages/shop"));
 const Artwork = lazy(() => import("@/pages/artwork"));
+const Commission = lazy(() => import("@/pages/commission"));
 
 function PageLoader() {
   return (
@@ -44,6 +45,7 @@ function Router() {
         <Route path="/blog" component={Blog} />
         <Route path="/blog/:slug" component={BlogPost} />
         <Route path="/rate/:token" component={Rate} />
+        <Route path="/commission" component={Commission} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

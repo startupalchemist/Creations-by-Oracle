@@ -411,12 +411,34 @@ async function seedArtistSettings(): Promise<void> {
   }
 }
 
+async function seedCommissionPricing(): Promise<void> {
+  try {
+    const flag = await storage.getSetting("commission_pricing_seeded_v1");
+    if (flag === "done") return;
+
+    const { DEFAULT_COMMISSION_PRICE_MATRIX, DEFAULT_COMMISSION_FORMAT_ADDONS, DEFAULT_COMMISSION_SUBJECT_FEES } = await import("@shared/schema");
+
+    const existing = await storage.getSetting("commission_price_matrix");
+    if (!existing) {
+      await storage.setSetting("commission_price_matrix", JSON.stringify(DEFAULT_COMMISSION_PRICE_MATRIX));
+      await storage.setSetting("commission_format_addons", JSON.stringify(DEFAULT_COMMISSION_FORMAT_ADDONS));
+      await storage.setSetting("commission_subject_fees", JSON.stringify(DEFAULT_COMMISSION_SUBJECT_FEES));
+    }
+
+    await storage.setSetting("commission_pricing_seeded_v1", "done");
+    log("[commission seed] Seeded commission pricing matrix");
+  } catch (err) {
+    log(`[commission seed] Failed: ${err}`);
+  }
+}
+
 (async () => {
   await seedRootUser();
   await runOneTimePDRCleanup();
   await seedGallery();
   await seedServices();
   await seedArtistSettings();
+  await seedCommissionPricing();
   await seedStaticPageRegistry();
   await registerRoutes(httpServer, app);
 

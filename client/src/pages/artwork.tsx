@@ -408,7 +408,7 @@ export default function ArtworkPage() {
               ) : artwork.sold ? (
                 <div className="border border-white/8 rounded-sm p-4 text-center" data-testid="div-sold-section">
                   <p className="text-[#B3B3B8]/40 text-sm mb-3">This work has found its home.</p>
-                  <Link href={`/contact?type=commission&subject=${encodeURIComponent(`Commission similar to "${artwork.title}"`)}&utm_source=artwork&utm_medium=sold&utm_campaign=commission`}>
+                  <Link href="/commission">
                     <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em]" data-testid="button-commission-similar">
                       Commission a Similar Piece
                     </Button>

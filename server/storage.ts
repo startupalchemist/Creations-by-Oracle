@@ -1,5 +1,5 @@
 import {
-  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry,
+  leads, users, sessions, posts, subscribers, newsletters, aiJobs, backlinks, backlinkClicks, topics, webhooks, webhookLogs, ratings, settings, services, gallerySections, galleryItems, artworks, orders, analyticsEvents, pageRegistry, commissions,
   type Lead, type InsertLead,
   type User, type InsertUser,
   type Session,
@@ -21,6 +21,7 @@ import {
   type Order,
   type AnalyticsEvent,
   type PageRegistry, type InsertPageRegistry,
+  type Commission,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, gte, count, sum } from "drizzle-orm";
@@ -171,6 +172,29 @@ export interface IStorage {
     subscriberCount: number;
     publishedPosts: number;
   }>;
+
+  createCommission(data: {
+    style: string;
+    size: string;
+    format: string;
+    extraSubjects: number;
+    basePrice: string;
+    formatAddon: string;
+    subjectFee: string;
+    totalPrice: string;
+    depositAmount: string;
+    referenceImageUrls?: string[];
+    notes?: string | null;
+    customerName: string;
+    customerEmail: string;
+    customerPhone?: string | null;
+    stripeSessionId?: string | null;
+    status?: string;
+  }): Promise<Commission>;
+  getCommissions(): Promise<Commission[]>;
+  getCommissionById(id: number): Promise<Commission | undefined>;
+  getCommissionBySessionId(sessionId: string): Promise<Commission | undefined>;
+  updateCommission(id: number, data: Partial<Commission>): Promise<Commission | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -694,6 +718,64 @@ export class DatabaseStorage implements IStorage {
       subscriberCount: allSubscribers.filter((s) => s.status === "active").length,
       publishedPosts: allPosts.filter((p) => p.status === "published").length,
     };
+  }
+
+  async createCommission(data: {
+    style: string;
+    size: string;
+    format: string;
+    extraSubjects: number;
+    basePrice: string;
+    formatAddon: string;
+    subjectFee: string;
+    totalPrice: string;
+    depositAmount: string;
+    referenceImageUrls?: string[];
+    notes?: string | null;
+    customerName: string;
+    customerEmail: string;
+    customerPhone?: string | null;
+    stripeSessionId?: string | null;
+    status?: string;
+  }): Promise<Commission> {
+    const [result] = await db.insert(commissions).values({
+      style: data.style,
+      size: data.size,
+      format: data.format,
+      extraSubjects: data.extraSubjects,
+      basePrice: data.basePrice,
+      formatAddon: data.formatAddon,
+      subjectFee: data.subjectFee,
+      totalPrice: data.totalPrice,
+      depositAmount: data.depositAmount,
+      referenceImageUrls: data.referenceImageUrls || [],
+      notes: data.notes || null,
+      customerName: data.customerName,
+      customerEmail: data.customerEmail,
+      customerPhone: data.customerPhone || null,
+      stripeSessionId: data.stripeSessionId || null,
+      status: data.status || "awaiting_deposit",
+    }).returning();
+    return result;
+  }
+
+  async getCommissions(): Promise<Commission[]> {
+    return db.select().from(commissions).orderBy(desc(commissions.createdAt));
+  }
+
+  async getCommissionById(id: number): Promise<Commission | undefined> {
+    const [result] = await db.select().from(commissions).where(eq(commissions.id, id));
+    return result;
+  }
+
+  async getCommissionBySessionId(sessionId: string): Promise<Commission | undefined> {
+    const [result] = await db.select().from(commissions).where(eq(commissions.stripeSessionId, sessionId));
+    return result;
+  }
+
+  async updateCommission(id: number, data: Partial<Commission>): Promise<Commission | undefined> {
+    const [result] = await db.update(commissions).set({ ...data, updatedAt: new Date() }).where(eq(commissions.id, id)).returning();
+    return result;
   }
 }
 

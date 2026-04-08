@@ -82,7 +82,7 @@ export default function Header() {
                 </span>
               </Link>
             ))}
-            <Link href="/contact?utm_source=website&utm_medium=header_nav&utm_campaign=commission">
+            <Link href="/commission">
               <Button
                 variant="default"
                 className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-[11px] uppercase tracking-[0.18em] font-semibold px-5 py-2"
@@ -122,7 +122,7 @@ export default function Header() {
                 </span>
               </Link>
             ))}
-            <Link href="/contact?utm_source=website&utm_medium=mobile_nav&utm_campaign=commission">
+            <Link href="/commission">
               <Button
                 variant="default"
                 className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 w-full text-[11px] uppercase tracking-[0.18em] font-semibold mt-3"

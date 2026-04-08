@@ -198,7 +198,7 @@ function FeaturedWorksSection() {
           ) : featured.length === 0 ? (
             <div className="text-center py-16 border border-white/8 rounded-sm">
               <p className="text-[#B3B3B8]/40 text-sm">New works coming soon.</p>
-              <Link href="/contact">
+              <Link href="/commission">
                 <Button className="mt-4 bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em]">
                   Commission a Piece
                 </Button>
@@ -303,7 +303,7 @@ function AboutSection() {
                     About the Artist
                   </Button>
                 </Link>
-                <Link href="/contact">
+                <Link href="/commission">
                   <Button
                     variant="ghost"
                     className="text-[#B3B3B8]/60 hover:text-white border border-white/10 hover:border-white/25 text-xs uppercase tracking-[0.18em] font-semibold px-6 py-2.5 h-auto"
@@ -351,7 +351,7 @@ function CommissionCTASection() {
           <p className="text-[#B3B3B8]/60 text-sm leading-relaxed mb-10 max-w-xl mx-auto">
             Commission an original work — a portrait, an abstract canvas, or a custom sculpture. Each commission begins with a conversation about what you want to live with.
           </p>
-          <Link href="/contact?utm_source=home&utm_medium=cta&utm_campaign=commission">
+          <Link href="/commission">
             <Button
               className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em] font-semibold px-10 py-3.5 h-auto"
               data-testid="button-commission-cta"

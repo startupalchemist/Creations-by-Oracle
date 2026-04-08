@@ -190,7 +190,7 @@ export default function Shop() {
         <p className="text-[#B3B3B8]/50 text-sm max-w-md mx-auto mb-8">
           Commission a bespoke piece — from a portrait to a large-scale installation. Every conversation is a collaboration.
         </p>
-        <Link href="/contact?utm_source=shop&utm_medium=cta&utm_campaign=commission">
+        <Link href="/commission">
           <Button
             className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em] font-semibold px-8 py-3 h-auto"
             data-testid="button-shop-commission-cta"

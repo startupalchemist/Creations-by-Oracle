@@ -436,3 +436,93 @@ export type InsertPageRegistry = z.infer<typeof insertPageRegistrySchema>;
 export type PageRegistry = typeof pageRegistry.$inferSelect;
 
 export const pageTypes = ["static", "blog", "artwork", "service"] as const;
+
+// ─── Commissions ─────────────────────────────────────────────────────────────
+
+export const commissions = pgTable("commissions", {
+  id: serial("id").primaryKey(),
+  style: text("style").notNull(),
+  size: text("size").notNull(),
+  format: text("format").notNull().default("Digital"),
+  extraSubjects: integer("extra_subjects").notNull().default(0),
+  basePrice: numeric("base_price", { precision: 10, scale: 2 }).notNull(),
+  formatAddon: numeric("format_addon", { precision: 10, scale: 2 }).notNull().default("0"),
+  subjectFee: numeric("subject_fee", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
+  depositAmount: numeric("deposit_amount", { precision: 10, scale: 2 }).notNull(),
+  referenceImageUrls: text("reference_image_urls").array().default(sql`'{}'::text[]`),
+  notes: text("notes"),
+  customerName: text("customer_name").notNull(),
+  customerEmail: text("customer_email").notNull(),
+  customerPhone: text("customer_phone"),
+  stripeSessionId: text("stripe_session_id"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  status: text("status").notNull().default("awaiting_deposit"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCommissionSchema = createInsertSchema(commissions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  stripeSessionId: true,
+  stripePaymentIntentId: true,
+  status: true,
+});
+
+export type InsertCommission = z.infer<typeof insertCommissionSchema>;
+export type Commission = typeof commissions.$inferSelect;
+
+export const commissionStatuses = [
+  "awaiting_deposit",
+  "deposit_paid",
+  "in_progress",
+  "ready",
+  "complete",
+  "cancelled",
+] as const;
+
+export const commissionStyles = ["Realism", "Fusion", "Oracle"] as const;
+export const commissionSizes = ["Small (8×10)", "Medium (11×14)", "Large (16×20)", "X-Large (18×24)", "XX-Large (24×36)", "XXX-Large (30×40+)"] as const;
+export const commissionFormats = ["Digital", "Paper", "Canvas"] as const;
+
+// Default pricing matrix seeded into settings
+export const DEFAULT_COMMISSION_PRICE_MATRIX = {
+  Realism: {
+    "Small (8×10)": 350,
+    "Medium (11×14)": 550,
+    "Large (16×20)": 850,
+    "X-Large (18×24)": 1100,
+    "XX-Large (24×36)": 1600,
+    "XXX-Large (30×40+)": 2200,
+  },
+  Fusion: {
+    "Small (8×10)": 450,
+    "Medium (11×14)": 700,
+    "Large (16×20)": 1050,
+    "X-Large (18×24)": 1400,
+    "XX-Large (24×36)": 2000,
+    "XXX-Large (30×40+)": 2800,
+  },
+  Oracle: {
+    "Small (8×10)": 600,
+    "Medium (11×14)": 950,
+    "Large (16×20)": 1400,
+    "X-Large (18×24)": 1850,
+    "XX-Large (24×36)": 2600,
+    "XXX-Large (30×40+)": 3500,
+  },
+};
+
+export const DEFAULT_COMMISSION_FORMAT_ADDONS = {
+  Digital: { "Small (8×10)": 0, "Medium (11×14)": 0, "Large (16×20)": 0, "X-Large (18×24)": 0, "XX-Large (24×36)": 0, "XXX-Large (30×40+)": 0 },
+  Paper: { "Small (8×10)": 20, "Medium (11×14)": 25, "Large (16×20)": 35, "X-Large (18×24)": 40, "XX-Large (24×36)": 45, "XXX-Large (30×40+)": 50 },
+  Canvas: { "Small (8×10)": 40, "Medium (11×14)": 55, "Large (16×20)": 70, "X-Large (18×24)": 80, "XX-Large (24×36)": 90, "XXX-Large (30×40+)": 100 },
+};
+
+export const DEFAULT_COMMISSION_SUBJECT_FEES = {
+  Realism: { "Small (8×10)": 50, "Medium (11×14)": 75, "Large (16×20)": 100, "X-Large (18×24)": 100, "XX-Large (24×36)": 125, "XXX-Large (30×40+)": 150 },
+  Fusion: { "Small (8×10)": 65, "Medium (11×14)": 90, "Large (16×20)": 120, "X-Large (18×24)": 120, "XX-Large (24×36)": 150, "XXX-Large (30×40+)": 180 },
+  Oracle: { "Small (8×10)": 80, "Medium (11×14)": 110, "Large (16×20)": 140, "X-Large (18×24)": 150, "XX-Large (24×36)": 175, "XXX-Large (30×40+)": 200 },
+};

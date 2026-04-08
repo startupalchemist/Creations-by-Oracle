@@ -64,7 +64,8 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - `/shop` — Artwork shop listing (filterable by category)
 - `/shop/:slug` — Individual artwork detail + Stripe purchase flow
 - `/about` — Artist bio and mediums
-- `/contact` — Commission/inquiry form
+- `/contact` — General inquiry/contact form
+- `/commission` — 7-step portrait commission builder (style → size → format → subjects → references → notes → contact info; Stripe Checkout for 50% deposit)
 - `/blog` — Blog listing
 - `/blog/:slug` — Blog post
 

@@ -50,7 +50,7 @@ export default function About() {
             </div>
 
             <div className="mt-10 flex gap-4 flex-wrap">
-              <Link href="/contact?utm_source=about&utm_medium=cta&utm_campaign=commission">
+              <Link href="/commission">
                 <Button
                   className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.2em] font-semibold px-7 py-3 h-auto"
                   data-testid="button-about-commission"

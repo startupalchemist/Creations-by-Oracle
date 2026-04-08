@@ -37,7 +37,7 @@ export default function Footer() {
               Abstract canvas art, life-like portraiture, 3D installations, and sculptures crafted in copper and other materials. Each work is one of a kind.
             </p>
             <div className="mt-6">
-              <Link href="/contact?utm_source=footer&utm_medium=cta&utm_campaign=commission">
+              <Link href="/commission">
                 <span className="inline-block text-xs uppercase tracking-[0.18em] font-semibold text-[#C084FC] hover:text-[#d8a4ff] transition-colors cursor-pointer border border-[#C084FC]/30 px-4 py-2 rounded-sm hover:border-[#C084FC]/60">
                   Commission a Piece
                 </span>
