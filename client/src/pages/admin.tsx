@@ -4449,7 +4449,7 @@ function ShopTab({ toast }: { toast: any }) {
 
   const startEdit = (artwork: Artwork) => {
     setEditingId(artwork.id);
-    setForm({ title: artwork.title, medium: artwork.medium || "", dimensions: artwork.dimensions || "", year: artwork.year ? String(artwork.year) : "", description: artwork.description || "", imageUrl: artwork.imageUrl || "", enhancedImageUrl: artwork.enhancedImageUrl || "", price: artwork.price ? String(artwork.price) : "", forSale: artwork.forSale ?? false, category: artwork.category || "Abstract", featured: artwork.featured ?? false, seoTitle: artwork.seoTitle || "", seoDescription: artwork.seoDescription || "", status: artwork.status || "draft", printMarkupPercent: artwork.printMarkupPercent ? String(artwork.printMarkupPercent) : "40", provenanceNotes: (artwork as any).provenanceNotes || "", editionInfo: (artwork as any).editionInfo || "" });
+    setForm({ title: artwork.title, medium: artwork.medium || "", dimensions: artwork.dimensions || "", year: artwork.year ? String(artwork.year) : "", description: artwork.description || "", imageUrl: artwork.imageUrl || "", enhancedImageUrl: artwork.enhancedImageUrl || "", price: artwork.price ? String(artwork.price) : "", forSale: artwork.forSale ?? false, category: artwork.category || "Abstract", featured: artwork.featured ?? false, seoTitle: artwork.seoTitle || "", seoDescription: artwork.seoDescription || "", status: artwork.status || "draft", printMarkupPercent: artwork.printMarkupPercent ? String(artwork.printMarkupPercent) : "40", provenanceNotes: artwork.provenanceNotes || "", editionInfo: artwork.editionInfo || "" });
     setShowCreate(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -5157,23 +5157,30 @@ function TestimonialsAdmin({ toast }: { toast: any }) {
     queryKey: ["/api/testimonials"],
   });
 
+  const { data: artworksList = [] } = useQuery<Artwork[]>({
+    queryKey: ["/api/artworks"],
+    queryFn: () => fetch("/api/artworks").then((r) => r.json()),
+  });
+
   const [editing, setEditing] = useState<TestimonialItem | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ collectorName: "", location: "", quote: "", displayOrder: 0, active: true });
+  const [form, setForm] = useState({ collectorName: "", location: "", quote: "", artworkId: "" as string, displayOrder: 0, active: true });
+
+  const resetForm = () => setForm({ collectorName: "", location: "", quote: "", artworkId: "", displayOrder: 0, active: true });
 
   const createMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/testimonials", form),
+    mutationFn: () => apiRequest("POST", "/api/testimonials", { ...form, artworkId: form.artworkId ? parseInt(form.artworkId) : null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/testimonials"] });
       setShowForm(false);
-      setForm({ collectorName: "", location: "", quote: "", displayOrder: 0, active: true });
+      resetForm();
       toast({ title: "Testimonial added" });
     },
     onError: () => toast({ title: "Failed to add", variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: { id: number } & typeof form) =>
+    mutationFn: (data: { id: number; collectorName: string; location: string; quote: string; artworkId: number | null; displayOrder: number; active: boolean }) =>
       apiRequest("PATCH", `/api/testimonials/${data.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/testimonials"] });
@@ -5193,8 +5200,10 @@ function TestimonialsAdmin({ toast }: { toast: any }) {
   });
 
   const toggleActive = (item: TestimonialItem) => {
-    updateMutation.mutate({ id: item.id, collectorName: item.collectorName, location: item.location || "", quote: item.quote, displayOrder: item.displayOrder, active: !item.active });
+    updateMutation.mutate({ id: item.id, collectorName: item.collectorName, location: item.location || "", quote: item.quote, artworkId: item.artworkId, displayOrder: item.displayOrder, active: !item.active });
   };
+
+  const artworkTitle = (id: number | null) => id ? (artworksList.find((a) => a.id === id)?.title ?? `Artwork #${id}`) : null;
 
   return (
     <div data-testid="section-testimonials-admin">
@@ -5218,6 +5227,15 @@ function TestimonialsAdmin({ toast }: { toast: any }) {
           <Input value={form.collectorName} onChange={(e) => setForm((f) => ({ ...f, collectorName: e.target.value }))} placeholder="Collector name *" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-testimonial-name" />
           <Input value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} placeholder="Location (city, country)" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" data-testid="input-testimonial-location" />
           <Textarea value={form.quote} onChange={(e) => setForm((f) => ({ ...f, quote: e.target.value }))} placeholder="Quote *" rows={3} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm resize-none" data-testid="input-testimonial-quote" />
+          <Select value={form.artworkId || "none"} onValueChange={(v) => setForm((f) => ({ ...f, artworkId: v === "none" ? "" : v }))}>
+            <SelectTrigger className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" data-testid="select-testimonial-artwork">
+              <SelectValue placeholder="Link to artwork (optional)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No linked artwork</SelectItem>
+              {artworksList.map((a) => <SelectItem key={a.id} value={String(a.id)}>{a.title}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <div className="flex items-center gap-2">
             <Input type="number" value={form.displayOrder} onChange={(e) => setForm((f) => ({ ...f, displayOrder: parseInt(e.target.value) || 0 }))} placeholder="Order" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-24" data-testid="input-testimonial-order" />
             <div className="flex items-center gap-2 ml-auto">
@@ -5247,13 +5265,20 @@ function TestimonialsAdmin({ toast }: { toast: any }) {
                   <Input value={editing.collectorName} onChange={(e) => setEditing((t) => t ? { ...t, collectorName: e.target.value } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
                   <Input value={editing.location || ""} onChange={(e) => setEditing((t) => t ? { ...t, location: e.target.value } : t)} placeholder="Location" className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm" />
                   <Textarea value={editing.quote} onChange={(e) => setEditing((t) => t ? { ...t, quote: e.target.value } : t)} rows={3} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm resize-none" />
+                  <Select value={editing.artworkId ? String(editing.artworkId) : "none"} onValueChange={(v) => setEditing((t) => t ? { ...t, artworkId: v === "none" ? null : parseInt(v) } : t)}>
+                    <SelectTrigger className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No linked artwork</SelectItem>
+                      {artworksList.map((a) => <SelectItem key={a.id} value={String(a.id)}>{a.title}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                   <div className="flex items-center gap-2">
                     <Input type="number" value={editing.displayOrder} onChange={(e) => setEditing((t) => t ? { ...t, displayOrder: parseInt(e.target.value) || 0 } : t)} className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm w-24" />
                     <label className="text-[#B3B3B8]/50 text-xs ml-auto">Active</label>
                     <Switch checked={editing.active} onCheckedChange={(v) => setEditing((t) => t ? { ...t, active: v } : t)} />
                   </div>
                   <div className="flex gap-2 pt-1">
-                    <Button onClick={() => updateMutation.mutate({ id: editing.id, collectorName: editing.collectorName, location: editing.location || "", quote: editing.quote, displayOrder: editing.displayOrder, active: editing.active })} disabled={updateMutation.isPending} className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-8 px-4">
+                    <Button onClick={() => updateMutation.mutate({ id: editing.id, collectorName: editing.collectorName, location: editing.location || "", quote: editing.quote, artworkId: editing.artworkId, displayOrder: editing.displayOrder, active: editing.active })} disabled={updateMutation.isPending} className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-8 px-4">
                       {updateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
                     </Button>
                     <Button variant="ghost" onClick={() => setEditing(null)} className="text-[#B3B3B8] text-xs border border-white/10 px-3 h-8">Cancel</Button>
@@ -5268,6 +5293,11 @@ function TestimonialsAdmin({ toast }: { toast: any }) {
                       {!item.active && <Badge className="bg-gray-500/20 text-gray-400 border-0 no-default-hover-elevate no-default-active-elevate text-[10px]">Inactive</Badge>}
                     </div>
                     <p className="text-[#B3B3B8]/60 text-xs line-clamp-2 italic">"{item.quote}"</p>
+                    {item.artworkId && (
+                      <p className="text-[#C084FC]/50 text-[10px] mt-1" data-testid={`text-testimonial-artwork-${item.id}`}>
+                        Linked: {artworkTitle(item.artworkId)}
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-[#B3B3B8]/40 hover:text-[#F5F5F7]" onClick={() => toggleActive(item)} title={item.active ? "Deactivate" : "Activate"} data-testid={`button-testimonial-toggle-${item.id}`}>
@@ -5341,7 +5371,7 @@ function ExhibitionsAdmin({ toast }: { toast: any }) {
     onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
   });
 
-  const showTypes = ["Solo", "Group", "Juried", "Invitational"];
+  const showTypes = ["Solo", "Group", "Art Fair", "Juried", "Invitational"];
 
   return (
     <div data-testid="section-exhibitions-admin">

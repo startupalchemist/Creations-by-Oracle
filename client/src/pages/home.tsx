@@ -51,6 +51,11 @@ function TestimonialsSection() {
               <div>
                 <p className="text-[#F5F5F7] text-xs font-medium">{t.collectorName}</p>
                 {t.location && <p className="text-[#B3B3B8]/40 text-[10px] mt-0.5">{t.location}</p>}
+                {t.artworkId && (
+                  <a href={`/artwork/${t.artworkId}`} className="text-[#C084FC]/60 text-[10px] mt-1.5 inline-block hover:text-[#C084FC] transition-colors" data-testid={`link-testimonial-artwork-${t.id}`}>
+                    View artwork →
+                  </a>
+                )}
               </div>
             </div>
           ))}

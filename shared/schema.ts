@@ -626,4 +626,4 @@ export const insertExhibitionSchema = createInsertSchema(exhibitions).omit({
 export type InsertExhibition = z.infer<typeof insertExhibitionSchema>;
 export type Exhibition = typeof exhibitions.$inferSelect;
 
-export const exhibitionShowTypes = ["Solo", "Group", "Juried", "Invitational"] as const;
+export const exhibitionShowTypes = ["Solo", "Group", "Art Fair", "Juried", "Invitational"] as const;
