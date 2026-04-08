@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useSearch } from "wouter";
 import { lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import Header from "@/components/header";
 import Footer from "@/components/footer";
 import Home from "@/pages/home";
 import NotFound from "@/pages/not-found";
+import { CheckCircle } from "lucide-react";
 
 const About = lazy(() => import("@/pages/about"));
 const Contact = lazy(() => import("@/pages/contact"));
@@ -30,6 +31,36 @@ function PageLoader() {
   );
 }
 
+function CommissionThankYou() {
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const commissionId = params.get("commission");
+  return (
+    <div className="bg-[#08060e] min-h-screen flex items-center justify-center px-4">
+      <div className="max-w-md text-center">
+        <CheckCircle className="w-16 h-16 text-[#C084FC] mx-auto mb-6" />
+        <h1 className="font-serif text-3xl text-white mb-4">Payment Received</h1>
+        <p className="text-[#B3B3B8] text-base leading-relaxed mb-2">
+          Thank you — your final payment has been confirmed and your commission is now complete.
+        </p>
+        {commissionId && (
+          <p className="text-[#B3B3B8] text-sm mb-6">Commission #{commissionId}</p>
+        )}
+        <p className="text-[#B3B3B8] text-sm mb-8">
+          You'll receive a confirmation email shortly with delivery details.
+        </p>
+        <a
+          href="/"
+          className="inline-block bg-[#C084FC] text-[#08060e] font-semibold text-sm px-8 py-3 rounded-sm tracking-wide hover:bg-[#a855f7] transition-colors"
+          data-testid="link-home"
+        >
+          Return Home
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
@@ -46,6 +77,7 @@ function Router() {
         <Route path="/blog/:slug" component={BlogPost} />
         <Route path="/rate/:token" component={Rate} />
         <Route path="/commission" component={Commission} />
+        <Route path="/commissions/thank-you" component={CommissionThankYou} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
