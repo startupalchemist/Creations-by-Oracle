@@ -420,6 +420,29 @@ async function seedArtistSettings(): Promise<void> {
   }
 }
 
+async function seedTestimonials(): Promise<void> {
+  try {
+    const flag = await storage.getSetting("testimonials_seeded_v1");
+    if (flag === "done") return;
+
+    const TESTIMONIALS = [
+      { collectorName: "Maya R.", location: "New York, NY", quote: "The abstract canvas piece Oracle created for my living room has stopped guests in their tracks every single time. It's alive — the colours shift with the light in the most magical way.", displayOrder: 0, active: true },
+      { collectorName: "James & Priya Okonkwo", location: "London, UK", quote: "We commissioned a family portrait and were blown away. It captured something intangible — the feeling of us, not just our faces. Absolutely worth every penny.", displayOrder: 1, active: true },
+      { collectorName: "Carlos Méndez", location: "Miami, FL", quote: "The copper sculpture exceeded my wildest expectations. Oracle has an instinct for form and finish that you rarely encounter. A centrepiece for the ages.", displayOrder: 2, active: true },
+      { collectorName: "Thandi N.", location: "Johannesburg, ZA", quote: "Commissioned a 3D installation for my studio. The dialogue it creates between space and shadow is exactly what I was hoping for. Truly extraordinary craftsmanship.", displayOrder: 3, active: true },
+    ];
+
+    for (const t of TESTIMONIALS) {
+      await storage.createTestimonial({ ...t, artworkId: null });
+    }
+
+    await storage.setSetting("testimonials_seeded_v1", "done");
+    log(`[testimonials seed] Seeded ${TESTIMONIALS.length} placeholder testimonials`);
+  } catch (err) {
+    log(`[testimonials seed] Failed: ${err}`);
+  }
+}
+
 async function seedCommissionPricing(): Promise<void> {
   try {
     const flag = await storage.getSetting("commission_pricing_seeded_v1");
@@ -448,6 +471,7 @@ async function seedCommissionPricing(): Promise<void> {
   await seedServices();
   await seedArtistSettings();
   await seedCommissionPricing();
+  await seedTestimonials();
   await seedStaticPageRegistry();
   await registerRoutes(httpServer, app);
 

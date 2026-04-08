@@ -2135,7 +2135,7 @@ Generate only the requested fields. Respond in this exact JSON format:
 
   app.post("/api/artworks", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
-      const { title, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, category, featured, seoTitle, seoDescription, seoKeywords } = req.body;
+      const { title, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, category, featured, seoTitle, seoDescription, seoKeywords, provenanceNotes, editionInfo } = req.body;
       if (!title) return res.status(400).json({ message: "Title is required" });
       let slug = slugify(title);
       const existing = await storage.getArtworkBySlug(slug);
@@ -2159,6 +2159,8 @@ Generate only the requested fields. Respond in this exact JSON format:
         seoDescription: seoDescription || null,
         seoKeywords: seoKeywords || [],
         publishedAt: null,
+        provenanceNotes: provenanceNotes || null,
+        editionInfo: editionInfo || null,
       });
       res.status(201).json(artwork);
     } catch {
@@ -2170,7 +2172,7 @@ Generate only the requested fields. Respond in this exact JSON format:
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid artwork ID" });
-      const fields = ["title", "medium", "dimensions", "year", "description", "imageUrl", "enhancedImageUrl", "price", "forSale", "sold", "status", "category", "featured", "seoTitle", "seoDescription", "seoKeywords", "stripeProductId", "stripePriceId", "printsAvailable", "printfulProductId", "printMarkupPercent"];
+      const fields = ["title", "medium", "dimensions", "year", "description", "imageUrl", "enhancedImageUrl", "price", "forSale", "sold", "status", "category", "featured", "seoTitle", "seoDescription", "seoKeywords", "stripeProductId", "stripePriceId", "printsAvailable", "printfulProductId", "printMarkupPercent", "provenanceNotes", "editionInfo"];
       const updates: Record<string, any> = {};
       for (const f of fields) {
         if (req.body[f] !== undefined) updates[f] = req.body[f];
