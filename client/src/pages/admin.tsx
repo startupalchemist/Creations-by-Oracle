@@ -123,7 +123,7 @@ export default function Admin() {
     { key: "shop", label: "Shop", icon: ShoppingBag },
     { key: "orders", label: "Orders", icon: DollarSign },
     { key: "leads", label: "Inquiries", icon: Users },
-    { key: "waitlist", label: "Waitlist", icon: Mail },
+    ...(user.role === "root" || user.role === "admin" ? [{ key: "waitlist" as TabKey, label: "Waitlist", icon: Mail }] : []),
     { key: "blog", label: "Blog", icon: FileText },
     { key: "newsletter", label: "Newsletter", icon: Mail },
     ...(user.role === "root" || user.role === "admin" ? [{ key: "pages" as TabKey, label: "Pages", icon: FileCheck }] : []),
@@ -184,7 +184,7 @@ export default function Admin() {
         {activeTab === "orders" && <OrdersTab toast={toast} />}
         {activeTab === "pages" && (user.role === "root" || user.role === "admin") && <PagesTab toast={toast} />}
         {activeTab === "leads" && <LeadsTab toast={toast} />}
-        {activeTab === "waitlist" && <WaitlistTab toast={toast} />}
+        {activeTab === "waitlist" && (user.role === "root" || user.role === "admin") && <WaitlistTab toast={toast} />}
         {activeTab === "blog" && (
           <BlogTab
             toast={toast}

@@ -2151,22 +2151,22 @@ Generate only the requested fields. Respond in this exact JSON format:
       for (const f of fields) {
         if (req.body[f] !== undefined) updates[f] = req.body[f];
       }
+      const existingArtwork = await storage.getArtworkById(id);
+      const isTransitioningToPublished = updates.status === "published" && existingArtwork?.status !== "published";
       if (updates.status === "published") {
-        const existing = await storage.getArtworkById(id);
-        if (existing && !existing.publishedAt) {
+        if (existingArtwork && !existingArtwork.publishedAt) {
           updates.publishedAt = new Date();
           // Auto-create page registry entry
-          const existing2 = await storage.getArtworkById(id);
-          const artworkSlug = `shop/${existing2?.slug || id}`;
+          const artworkSlug = `shop/${existingArtwork?.slug || id}`;
           const existingPage = await storage.getPageBySlug(artworkSlug);
-          if (!existingPage && existing2) {
+          if (!existingPage && existingArtwork) {
             const page = await storage.createPage({
               slug: artworkSlug,
-              title: existing2.title,
+              title: existingArtwork.title,
               pageType: "artwork",
-              seoTitle: existing2.seoTitle || existing2.title,
-              seoDescription: existing2.seoDescription || existing2.description.substring(0, 155),
-              seoKeywords: existing2.seoKeywords || [],
+              seoTitle: existingArtwork.seoTitle || existingArtwork.title,
+              seoDescription: existingArtwork.seoDescription || existingArtwork.description.substring(0, 155),
+              seoKeywords: existingArtwork.seoKeywords || [],
               status: "published",
               linkedEntityId: id,
               linkedEntityType: "artwork",
@@ -2184,8 +2184,8 @@ Generate only the requested fields. Respond in this exact JSON format:
       if (!artwork) return res.status(404).json({ message: "Artwork not found" });
       if (updates.status === "published") {
         fireWebhooks("artwork.published", { id: artwork.id, title: artwork.title, slug: artwork.slug, category: artwork.category });
-        // Notify waitlist subscribers matching this artwork's category
-        if (artwork.category) {
+        // Notify waitlist subscribers only on first publish (status transition)
+        if (isTransitioningToPublished && artwork.category) {
           try {
             const waitlistEntries = await storage.getWaitlistByCategory(artwork.category);
             if (waitlistEntries.length > 0) {
