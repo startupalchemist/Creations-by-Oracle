@@ -611,6 +611,7 @@ export async function registerRoutes(
         } catch (e: any) {
           console.error("Page registry auto-create error:", e?.message);
         }
+        logAdminAction(req, "post_published", `Published post "${post.title}"`, { entityType: "post", entityId: String(id) });
       }
       res.json(post);
     } catch {
@@ -3007,9 +3008,19 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
   app.post("/api/analytics/event", async (req, res) => {
     try {
-      const { page, eventType, sessionId, referrer, utmSource, utmMedium, utmCampaign, metadata } = req.body;
-      if (!page || !eventType) return res.status(400).json({ message: "page and eventType required" });
-      await storage.trackEvent({ page, eventType, sessionId, referrer, utmSource, utmMedium, utmCampaign, metadata });
+      const analyticsEventSchema = z.object({
+        page: z.string().min(1, "page is required"),
+        eventType: z.string().min(1, "eventType is required"),
+        sessionId: z.string().nullable().optional(),
+        referrer: z.string().nullable().optional(),
+        utmSource: z.string().nullable().optional(),
+        utmMedium: z.string().nullable().optional(),
+        utmCampaign: z.string().nullable().optional(),
+        metadata: z.record(z.unknown()).nullable().optional(),
+      });
+      const parsed = analyticsEventSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "page and eventType required" });
+      await storage.trackEvent(parsed.data);
       res.json({ ok: true });
     } catch {
       res.json({ ok: true });
@@ -3039,8 +3050,20 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
   app.post("/api/pages", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
-      const { slug, title, pageType, seoTitle, seoDescription, seoKeywords, status, linkedEntityId, linkedEntityType } = req.body;
-      if (!slug || !title) return res.status(400).json({ message: "slug and title required" });
+      const pageCreateSchema = z.object({
+        slug: z.string().min(1, "slug is required"),
+        title: z.string().min(1, "title is required"),
+        pageType: z.string().optional(),
+        seoTitle: z.string().nullable().optional(),
+        seoDescription: z.string().nullable().optional(),
+        seoKeywords: z.array(z.string()).optional(),
+        status: z.enum(["draft", "published", "archived"]).optional(),
+        linkedEntityId: z.number().int().positive().nullable().optional(),
+        linkedEntityType: z.string().nullable().optional(),
+      });
+      const parsed = pageCreateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const { slug, title, pageType, seoTitle, seoDescription, seoKeywords, status, linkedEntityId, linkedEntityType } = parsed.data;
       const page = await storage.createPage({ slug, title, pageType: pageType || "static", seoTitle, seoDescription, seoKeywords, status: status || "published", linkedEntityId, linkedEntityType });
       res.status(201).json(page);
     } catch {
