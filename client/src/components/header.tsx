@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Menu, X, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useBrand } from "@/hooks/use-brand";
 
 interface NavItem {
   label: string;
@@ -20,6 +21,7 @@ export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [location] = useLocation();
+  const brand = useBrand();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -53,13 +55,13 @@ export default function Header() {
                   style={{ fontFamily: "Georgia, serif", letterSpacing: "0.28em" }}
                   data-testid="text-logo-name"
                 >
-                  Studio
+                  {brand.artist_name}
                 </span>
                 <span
                   className="text-[#C084FC]/60 tracking-[0.15em] text-[9px] uppercase"
                   style={{ letterSpacing: "0.25em" }}
                 >
-                  Original Art
+                  {brand.artist_tagline}
                 </span>
               </div>
             </div>

@@ -87,7 +87,7 @@ const statusColors: Record<string, string> = {
   "Sale Closed": "bg-green-600/20 text-green-300",
 };
 
-type TabKey = "dyno" | "dashboard" | "leads" | "blog" | "newsletter" | "users" | "integrations" | "seo" | "services" | "gallery" | "shop" | "pages" | "orders";
+type TabKey = "dyno" | "dashboard" | "leads" | "blog" | "newsletter" | "users" | "integrations" | "seo" | "services" | "gallery" | "shop" | "pages" | "orders" | "brand";
 
 export default function Admin() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -131,6 +131,7 @@ export default function Admin() {
     ...(user.role === "root" || user.role === "admin" ? [{ key: "seo" as TabKey, label: "SEO", icon: Target }] : []),
     ...(user.role === "root" || user.role === "admin" ? [{ key: "services" as TabKey, label: "Blog Services", icon: Sparkles }] : []),
     ...(user.role === "root" || user.role === "admin" ? [{ key: "gallery" as TabKey, label: "Gallery", icon: Globe }] : []),
+    ...(user.role === "root" || user.role === "admin" ? [{ key: "brand" as TabKey, label: "Brand", icon: Settings }] : []),
   ];
 
   return (
@@ -142,7 +143,7 @@ export default function Admin() {
               Admin Panel
             </p>
             <h1 className="text-2xl font-light text-[#F5F5F7] tracking-[0.2em] uppercase" data-testid="text-admin-headline" style={{ fontFamily: "Georgia, serif" }}>
-              Studio
+              Creations by Oracle
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -223,6 +224,9 @@ export default function Admin() {
         )}
         {activeTab === "gallery" && (user.role === "root" || user.role === "admin") && (
           <GalleryTab toast={toast} />
+        )}
+        {activeTab === "brand" && (user.role === "root" || user.role === "admin") && (
+          <BrandTab toast={toast} />
         )}
       </div>
     </div>
@@ -4623,6 +4627,153 @@ function PagesTab({ toast }: { toast: any }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+type BrandForm = {
+  artist_name: string;
+  artist_tagline: string;
+  artist_email: string;
+  artist_instagram: string;
+  artist_twitter: string;
+  artist_facebook: string;
+  artist_tiktok: string;
+};
+
+const EMPTY_BRAND_FORM: BrandForm = {
+  artist_name: "",
+  artist_tagline: "",
+  artist_email: "",
+  artist_instagram: "",
+  artist_twitter: "",
+  artist_facebook: "",
+  artist_tiktok: "",
+};
+
+type SocialField = {
+  key: keyof Pick<BrandForm, "artist_instagram" | "artist_twitter" | "artist_facebook" | "artist_tiktok">;
+  label: string;
+  placeholder: string;
+  testid: string;
+};
+
+const SOCIAL_FIELDS: SocialField[] = [
+  { key: "artist_instagram", label: "Instagram", placeholder: "https://instagram.com/yourhandle", testid: "input-brand-instagram" },
+  { key: "artist_twitter", label: "Twitter / X", placeholder: "https://twitter.com/yourhandle", testid: "input-brand-twitter" },
+  { key: "artist_facebook", label: "Facebook", placeholder: "https://facebook.com/yourpage", testid: "input-brand-facebook" },
+  { key: "artist_tiktok", label: "TikTok", placeholder: "https://tiktok.com/@yourhandle", testid: "input-brand-tiktok" },
+];
+
+function BrandTab({ toast }: { toast: any }) {
+  const { data: brandData, isLoading, refetch } = useQuery<Record<string, string>>({
+    queryKey: ["/api/brand"],
+  });
+
+  const [form, setForm] = useState<BrandForm>(EMPTY_BRAND_FORM);
+
+  useEffect(() => {
+    if (brandData) {
+      setForm({
+        artist_name: brandData.artist_name || "Creations by Oracle",
+        artist_tagline: brandData.artist_tagline || "Original Art",
+        artist_email: brandData.artist_email || "",
+        artist_instagram: brandData.artist_instagram || "",
+        artist_twitter: brandData.artist_twitter || "",
+        artist_facebook: brandData.artist_facebook || "",
+        artist_tiktok: brandData.artist_tiktok || "",
+      });
+    }
+  }, [brandData]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: BrandForm) => {
+      const res = await apiRequest("PUT", "/api/brand", data);
+      if (!res.ok) throw new Error("Failed to save");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/brand"] });
+      refetch();
+      toast({ title: "Brand settings saved" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#5D3FD3] animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-8 max-w-2xl" data-testid="tab-content-brand">
+      <div>
+        <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 mb-1">Brand Settings</p>
+        <p className="text-[#B3B3B8]/40 text-xs">Update your artist name, tagline, contact email, and social links. These appear in the site header, footer, and public pages.</p>
+      </div>
+
+      <div className="space-y-5 p-6 rounded-md bg-[#141416] border border-white/5">
+        <p className="text-xs uppercase tracking-[0.25em] text-[#C084FC]/70 font-semibold mb-2">Identity</p>
+
+        <div>
+          <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Artist / Brand Name</label>
+          <Input
+            value={form.artist_name}
+            onChange={(e) => setForm((f) => ({ ...f, artist_name: e.target.value }))}
+            placeholder="Creations by Oracle"
+            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
+            data-testid="input-brand-artist-name"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Tagline</label>
+          <Input
+            value={form.artist_tagline}
+            onChange={(e) => setForm((f) => ({ ...f, artist_tagline: e.target.value }))}
+            placeholder="Original Art"
+            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
+            data-testid="input-brand-tagline"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Contact Email</label>
+          <Input
+            type="email"
+            value={form.artist_email}
+            onChange={(e) => setForm((f) => ({ ...f, artist_email: e.target.value }))}
+            placeholder="hello@example.com"
+            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
+            data-testid="input-brand-email"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-5 p-6 rounded-md bg-[#141416] border border-white/5">
+        <p className="text-xs uppercase tracking-[0.25em] text-[#C084FC]/70 font-semibold mb-2">Social Links</p>
+
+        {SOCIAL_FIELDS.map(({ key, label, placeholder, testid }) => (
+          <div key={key}>
+            <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">{label}</label>
+            <Input
+              value={form[key]}
+              onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+              placeholder={placeholder}
+              className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm"
+              data-testid={testid}
+            />
+          </div>
+        ))}
+      </div>
+
+      <Button
+        onClick={() => saveMutation.mutate(form)}
+        disabled={saveMutation.isPending}
+        className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold px-8 py-3 h-auto"
+        data-testid="button-brand-save"
+      >
+        {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Save className="w-3.5 h-3.5 mr-2" />}
+        Save Brand Settings
+      </Button>
     </div>
   );
 }

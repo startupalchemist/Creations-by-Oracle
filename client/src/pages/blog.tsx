@@ -55,7 +55,7 @@ export default function Blog() {
             style={{ fontFamily: "Georgia, serif" }}
             data-testid="text-blog-headline"
           >
-            From the Studio
+            The Journal
           </h1>
           <p className="mt-4 text-[#B3B3B8] text-lg leading-relaxed font-light">
             Process notes, artistic reflections, and insights on contemporary art and collecting.

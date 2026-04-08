@@ -88,7 +88,7 @@ async function sendSentimentSurvey(lead: { id: number; name: string; email: stri
       subject: "How was your experience with us?",
       html: `
         <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
-          <p style="color: #B3B3B8; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 16px;">Studio</p>
+          <p style="color: #B3B3B8; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 16px;">Creations by Oracle</p>
           <h2 style="font-size: 22px; font-weight: 700; margin: 0 0 16px 0;">How was your experience, ${lead.name.split(" ")[0]}?</h2>
           <p style="color: #B3B3B8; font-size: 14px; line-height: 1.6; margin-bottom: 32px;">Thank you for your inquiry. We'd love to hear about your experience working with us.</p>
           <div style="text-align: center; margin-bottom: 32px;">
@@ -1620,6 +1620,43 @@ Respond in JSON format:
     }
   });
 
+  // ─── Brand / Artist Settings (Public Read) ────────────────────
+
+  app.get("/api/brand", async (_req, res) => {
+    try {
+      const keys = ["artist_name", "artist_tagline", "artist_email", "artist_instagram", "artist_twitter", "artist_facebook", "artist_tiktok"];
+      const values: Record<string, string> = {};
+      for (const key of keys) {
+        const val = await storage.getSetting(key);
+        if (val !== undefined) values[key] = val;
+      }
+      res.json(values);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch brand settings" });
+    }
+  });
+
+  app.put("/api/brand", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const allowed = ["artist_name", "artist_tagline", "artist_email", "artist_instagram", "artist_twitter", "artist_facebook", "artist_tiktok"];
+      const updates = req.body as Record<string, unknown>;
+      for (const key of Object.keys(updates)) {
+        if (!allowed.includes(key)) {
+          return res.status(400).json({ message: `Invalid brand key: ${key}` });
+        }
+        if (typeof updates[key] !== "string") {
+          return res.status(400).json({ message: `Value for ${key} must be a string` });
+        }
+      }
+      for (const [key, value] of Object.entries(updates)) {
+        await storage.setSetting(key, value as string);
+      }
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to update brand settings" });
+    }
+  });
+
   // ─── SEO Management Routes ────────────────────────────────────
 
   app.get("/api/seo/og-image", async (_req, res) => {
@@ -2428,7 +2465,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
     try {
       const stripeKey = process.env.STRIPE_SECRET_KEY;
       if (!stripeKey) {
-        return res.status(503).json({ message: "Payments not configured. Please connect Stripe to enable purchases." });
+        return res.status(503).json({ message: "Checkout is temporarily unavailable. Please try again later or contact us directly to inquire about this artwork." });
       }
       const Stripe = require("stripe");
       const stripe = new Stripe(stripeKey);

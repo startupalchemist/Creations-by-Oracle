@@ -382,11 +382,41 @@ async function seedStaticPageRegistry(): Promise<void> {
   }
 }
 
+async function seedArtistSettings(): Promise<void> {
+  try {
+    const flag = await storage.getSetting("artist_settings_seeded_v1");
+    if (flag === "done") return;
+
+    const defaults: Record<string, string> = {
+      artist_name: "Creations by Oracle",
+      artist_tagline: "Original Art",
+      artist_email: "",
+      artist_instagram: "",
+      artist_twitter: "",
+      artist_facebook: "",
+      artist_tiktok: "",
+    };
+
+    for (const [key, value] of Object.entries(defaults)) {
+      const existing = await storage.getSetting(key);
+      if (existing === undefined) {
+        await storage.setSetting(key, value);
+      }
+    }
+
+    await storage.setSetting("artist_settings_seeded_v1", "done");
+    log("[artist settings seed] Seeded default artist settings");
+  } catch (err) {
+    log(`[artist settings seed] Failed: ${err}`);
+  }
+}
+
 (async () => {
   await seedRootUser();
   await runOneTimePDRCleanup();
   await seedGallery();
   await seedServices();
+  await seedArtistSettings();
   await seedStaticPageRegistry();
   await registerRoutes(httpServer, app);
 

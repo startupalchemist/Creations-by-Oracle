@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { useBrand } from "@/hooks/use-brand";
 
 const navLinks = [
   { label: "Gallery", href: "/gallery" },
@@ -17,6 +18,7 @@ const artLinks = [
 ];
 
 export default function Footer() {
+  const brand = useBrand();
   return (
     <footer className="border-t border-white/5 bg-[#08060e]" data-testid="footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-16 lg:py-20">
@@ -25,10 +27,10 @@ export default function Footer() {
             <div className="mb-4">
               <span className="text-[#F5F5F7] font-light tracking-[0.3em] text-base uppercase block"
                 style={{ fontFamily: "Georgia, serif" }}>
-                Studio
+                {brand.artist_name}
               </span>
               <span className="text-[#C084FC]/50 text-[10px] tracking-[0.25em] uppercase">
-                Original Art
+                {brand.artist_tagline}
               </span>
             </div>
             <p className="text-[#B3B3B8]/60 text-xs leading-relaxed max-w-xs mt-4">
@@ -91,7 +93,7 @@ export default function Footer() {
 
         <div className="mt-16 pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-[#B3B3B8]/30 text-xs tracking-wide">
-            {new Date().getFullYear()} Studio. All rights reserved.
+            {new Date().getFullYear()} {brand.artist_name}. All rights reserved.
           </p>
           <div className="flex items-center gap-6">
             <Link href="/login">
