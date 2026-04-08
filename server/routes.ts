@@ -446,17 +446,17 @@ export async function registerRoutes(
   app.patch("/api/leads/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const leadPatchSchema = z.object({
+        status: z.enum(leadStatuses as [string, ...string[]]).optional(),
+        message: z.string().optional(),
+        subject: z.string().optional(),
+      });
+      const parsed = leadPatchSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const updates: Record<string, any> = {};
-
-      if (req.body.status) {
-        if (!leadStatuses.includes(req.body.status)) {
-          return res.status(400).json({ message: "Invalid status" });
-        }
-        updates.status = req.body.status;
+      for (const [k, v] of Object.entries(parsed.data)) {
+        if (v !== undefined) updates[k] = v;
       }
-      if (req.body.message !== undefined) updates.message = req.body.message;
-      if (req.body.subject !== undefined) updates.subject = req.body.subject;
-
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });
       }
@@ -548,10 +548,22 @@ export async function registerRoutes(
   app.patch("/api/posts/:id", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const postPatchSchema = z.object({
+        title: z.string().min(1).optional(),
+        content: z.string().optional(),
+        excerpt: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        seoTitle: z.string().nullable().optional(),
+        seoDescription: z.string().nullable().optional(),
+        seoKeywords: z.array(z.string()).optional(),
+        status: z.enum(["draft", "queued", "published"]).optional(),
+        featuredImage: z.string().nullable().optional(),
+      });
+      const parsed = postPatchSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const updates: Record<string, any> = {};
-      const fields = ["title", "content", "excerpt", "tags", "seoTitle", "seoDescription", "seoKeywords", "status", "featuredImage"];
-      for (const f of fields) {
-        if (req.body[f] !== undefined) updates[f] = req.body[f];
+      for (const [k, v] of Object.entries(parsed.data)) {
+        if (v !== undefined) updates[k] = v;
       }
       let existingPost: Awaited<ReturnType<typeof storage.getPostById>> | undefined;
       if (updates.status === "published") {
@@ -2344,10 +2356,36 @@ Generate only the requested fields. Respond in this exact JSON format:
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid artwork ID" });
-      const fields = ["title", "medium", "dimensions", "year", "description", "imageUrl", "enhancedImageUrl", "price", "forSale", "sold", "status", "category", "featured", "seoTitle", "seoDescription", "seoKeywords", "stripeProductId", "stripePriceId", "printsAvailable", "printfulProductId", "printMarkupPercent", "provenanceNotes", "editionInfo"];
+      const artworkPatchSchema = z.object({
+        title: z.string().min(1).optional(),
+        medium: z.string().optional(),
+        dimensions: z.string().optional(),
+        year: z.number().int().nullable().optional(),
+        description: z.string().optional(),
+        imageUrl: z.string().optional(),
+        enhancedImageUrl: z.string().nullable().optional(),
+        price: z.union([z.string(), z.number()]).nullable().optional(),
+        forSale: z.boolean().optional(),
+        sold: z.boolean().optional(),
+        status: z.enum(artworkStatuses as [string, ...string[]]).optional(),
+        category: z.enum(artworkCategories as [string, ...string[]]).optional(),
+        featured: z.boolean().optional(),
+        seoTitle: z.string().nullable().optional(),
+        seoDescription: z.string().nullable().optional(),
+        seoKeywords: z.array(z.string()).optional(),
+        stripeProductId: z.string().nullable().optional(),
+        stripePriceId: z.string().nullable().optional(),
+        printsAvailable: z.boolean().optional(),
+        printfulProductId: z.string().nullable().optional(),
+        printMarkupPercent: z.number().optional(),
+        provenanceNotes: z.string().nullable().optional(),
+        editionInfo: z.string().nullable().optional(),
+      });
+      const parsed = artworkPatchSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const updates: Record<string, any> = {};
-      for (const f of fields) {
-        if (req.body[f] !== undefined) updates[f] = req.body[f];
+      for (const [k, v] of Object.entries(parsed.data)) {
+        if (v !== undefined) updates[k] = v;
       }
       const existingArtwork = await storage.getArtworkById(id);
       const isTransitioningToPublished = updates.status === "published" && existingArtwork?.status !== "published";
@@ -3006,9 +3044,21 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid page ID" });
-      const fields = ["slug", "title", "pageType", "seoTitle", "seoDescription", "seoKeywords", "status"];
+      const pagePatchSchema = z.object({
+        slug: z.string().min(1).optional(),
+        title: z.string().min(1).optional(),
+        pageType: z.string().optional(),
+        seoTitle: z.string().nullable().optional(),
+        seoDescription: z.string().nullable().optional(),
+        seoKeywords: z.array(z.string()).optional(),
+        status: z.enum(["draft", "published", "archived"]).optional(),
+      });
+      const parsed = pagePatchSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const updates: Record<string, any> = {};
-      for (const f of fields) { if (req.body[f] !== undefined) updates[f] = req.body[f]; }
+      for (const [k, v] of Object.entries(parsed.data)) {
+        if (v !== undefined) updates[k] = v;
+      }
       const page = await storage.updatePage(id, updates);
       if (!page) return res.status(404).json({ message: "Page not found" });
       res.json(page);
