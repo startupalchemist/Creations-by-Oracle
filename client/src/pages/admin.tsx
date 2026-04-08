@@ -4725,14 +4725,151 @@ function parseShippingAddress(raw: string | null | undefined): string {
   }
 }
 
+const COMMISSION_STATUS_COLORS: Record<string, string> = {
+  awaiting_deposit: "bg-amber-500/20 text-amber-400",
+  deposit_paid: "bg-blue-500/20 text-blue-400",
+  in_progress: "bg-indigo-500/20 text-indigo-400",
+  ready: "bg-emerald-500/20 text-emerald-400",
+  final_sent: "bg-[#C084FC]/20 text-[#C084FC]",
+  complete: "bg-green-500/20 text-green-400",
+  cancelled: "bg-gray-500/20 text-gray-400",
+};
+
+function CommissionsSubTab({ toast }: { toast: any }) {
+  const { data: commissions = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/commissions"],
+    queryFn: () => fetch("/api/commissions", { credentials: "include" }).then((r) => r.json()),
+  });
+
+  const [sendingFinalId, setSendingFinalId] = useState<number | null>(null);
+
+  const updateStatus = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PATCH", `/api/commissions/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      toast({ title: "Commission updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const sendFinalPayment = async (id: number) => {
+    setSendingFinalId(id);
+    try {
+      const res = await apiRequest("POST", `/api/commissions/${id}/final-payment`, {});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      toast({ title: "Final payment link sent", description: "Customer received email with payment link." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to send final payment link", variant: "destructive" });
+    } finally {
+      setSendingFinalId(null);
+    }
+  };
+
+  if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" /></div>;
+
+  if (!commissions.length) return (
+    <div className="text-center py-16 border border-white/8 rounded-sm">
+      <Palette className="w-8 h-8 text-white/10 mx-auto mb-3" />
+      <p className="text-[#B3B3B8]/40 text-sm">No commissions yet.</p>
+      <p className="text-[#B3B3B8]/25 text-xs mt-1">Commission requests will appear here once customers submit the portrait builder.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      {commissions.map((c: any) => {
+        const total = parseFloat(c.totalPrice || 0);
+        const deposit = parseFloat(c.depositAmount || 0);
+        const balance = total - deposit;
+        const canSendFinal = ["deposit_paid", "in_progress", "ready"].includes(c.status);
+        const hasFinalLink = !!c.finalPaymentLinkUrl;
+        return (
+          <div key={c.id} className="p-5 rounded-md bg-[#141416] border border-white/5 space-y-3" data-testid={`card-commission-${c.id}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[#F5F5F7] font-medium text-sm">{c.customerName}</p>
+                <p className="text-[#B3B3B8]/50 text-xs">{c.customerEmail}</p>
+                <p className="text-[#B3B3B8]/40 text-xs mt-0.5">{c.style} — {c.size} · {c.format}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[#C084FC] font-semibold text-sm">${total.toLocaleString()}</p>
+                <p className="text-[#B3B3B8]/40 text-xs">Deposit: ${deposit.toLocaleString()} · Balance: ${balance.toLocaleString()}</p>
+                <p className="text-[#B3B3B8]/30 text-[10px] mt-0.5">{new Date(c.createdAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <span className={`text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm ${COMMISSION_STATUS_COLORS[c.status] || "bg-gray-500/20 text-gray-400"}`} data-testid={`badge-commission-status-${c.id}`}>
+                {c.status.replace(/_/g, " ")}
+              </span>
+
+              <Select
+                value={c.status}
+                onValueChange={(val) => updateStatus.mutate({ id: c.id, status: val })}
+              >
+                <SelectTrigger className="h-7 text-xs bg-[#0B0B0D] border-white/10 text-[#B3B3B8] w-[160px]" data-testid={`select-commission-status-${c.id}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["awaiting_deposit", "deposit_paid", "in_progress", "ready", "final_sent", "complete", "cancelled"].map((s) => (
+                    <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {canSendFinal && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => sendFinalPayment(c.id)}
+                  disabled={sendingFinalId === c.id}
+                  className="h-7 text-xs border-[#C084FC]/30 text-[#C084FC] hover:bg-[#C084FC]/10"
+                  data-testid={`button-send-final-${c.id}`}
+                >
+                  {sendingFinalId === c.id ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <DollarSign className="w-3 h-3 mr-1" />}
+                  Send Final Invoice
+                </Button>
+              )}
+
+              {hasFinalLink && (
+                <a
+                  href={c.finalPaymentLinkUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-[#B3B3B8]/50 hover:text-[#C084FC] flex items-center gap-1"
+                  data-testid={`link-final-payment-${c.id}`}
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Payment Link
+                </a>
+              )}
+            </div>
+
+            {c.notes && (
+              <p className="text-xs text-[#B3B3B8]/40 italic border-t border-white/5 pt-2">{c.notes}</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function OrdersTab({ toast }: { toast: any }) {
-  const [subTab, setSubTab] = useState<"originals" | "prints">("originals");
+  const [subTab, setSubTab] = useState<"originals" | "prints" | "commissions">("originals");
   const { data: orders, isLoading } = useQuery<any[]>({
     queryKey: ["/api/orders"],
   });
   const { data: printOrders, isLoading: printLoading } = useQuery<any[]>({
     queryKey: ["/api/print-orders"],
     queryFn: () => fetch("/api/print-orders", { credentials: "include" }).then((r) => r.json()),
+  });
+  const { data: commissions } = useQuery<any[]>({
+    queryKey: ["/api/commissions"],
+    queryFn: () => fetch("/api/commissions", { credentials: "include" }).then((r) => r.json()),
   });
 
   const updatePrintOrder = useMutation({
@@ -4767,7 +4904,7 @@ function OrdersTab({ toast }: { toast: any }) {
     <div className="space-y-4" data-testid="tab-orders-content">
       <div>
         <h2 className="text-lg font-medium text-[#F5F5F7]">Orders</h2>
-        <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Artwork purchases and print order records</p>
+        <p className="text-[#B3B3B8]/50 text-xs mt-0.5">Artwork purchases, print orders, and portrait commissions</p>
       </div>
 
       <div className="flex gap-2 border-b border-white/5 pb-3">
@@ -4784,6 +4921,13 @@ function OrdersTab({ toast }: { toast: any }) {
           data-testid="subtab-prints"
         >
           Print Orders {printOrders?.length ? `(${printOrders.length})` : ""}
+        </button>
+        <button
+          onClick={() => setSubTab("commissions")}
+          className={`px-4 py-1.5 text-xs rounded-sm transition-colors ${subTab === "commissions" ? "bg-[#C084FC]/20 text-[#C084FC]" : "text-[#B3B3B8]/50 hover:text-[#B3B3B8]"}`}
+          data-testid="subtab-commissions"
+        >
+          Commissions {commissions?.length ? `(${commissions.length})` : ""}
         </button>
       </div>
 
@@ -4919,6 +5063,8 @@ function OrdersTab({ toast }: { toast: any }) {
           </div>
         )
       )}
+
+      {subTab === "commissions" && <CommissionsSubTab toast={toast} />}
     </div>
   );
 }
@@ -5020,6 +5166,86 @@ const SOCIAL_FIELDS: SocialField[] = [
   { key: "artist_facebook", label: "Facebook", placeholder: "https://facebook.com/yourpage", testid: "input-brand-facebook" },
   { key: "artist_tiktok", label: "TikTok", placeholder: "https://tiktok.com/@yourhandle", testid: "input-brand-tiktok" },
 ];
+
+function CommissionSettingsPanel({ toast }: { toast: any }) {
+  const [depositPct, setDepositPct] = useState("50");
+  const [termsNote, setTermsNote] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/settings/commission_deposit_pct", { credentials: "include" }).then((r) => r.json()),
+      fetch("/api/settings/commission_terms_note", { credentials: "include" }).then((r) => r.json()),
+    ]).then(([pct, terms]) => {
+      setDepositPct(pct.value ?? "50");
+      setTermsNote(terms.value ?? "");
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const pctNum = parseInt(depositPct);
+      if (isNaN(pctNum) || pctNum < 1 || pctNum > 100) throw new Error("Deposit % must be 1–100");
+      await apiRequest("PUT", "/api/settings/commission_deposit_pct", { value: String(pctNum) });
+      await apiRequest("PUT", "/api/settings/commission_terms_note", { value: termsNote });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commission/pricing"] });
+      toast({ title: "Commission settings saved" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 text-[#C084FC] animate-spin" /></div>;
+
+  return (
+    <div className="max-w-2xl space-y-6" data-testid="section-commission-settings">
+      <div>
+        <p className="text-xs uppercase tracking-[0.3em] text-[#B3B3B8]/50 mb-1">Commission Settings</p>
+        <p className="text-[#B3B3B8]/40 text-xs">Configure the deposit percentage and terms shown to customers during the commission checkout flow.</p>
+      </div>
+      <div className="space-y-5 p-6 rounded-md bg-[#141416] border border-white/5">
+        <p className="text-xs uppercase tracking-[0.25em] text-[#C084FC]/70 font-semibold mb-2">Payment Terms</p>
+        <div>
+          <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Deposit Percentage (%)</label>
+          <Input
+            type="number"
+            min={1}
+            max={100}
+            value={depositPct}
+            onChange={(e) => setDepositPct(e.target.value)}
+            placeholder="50"
+            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm max-w-[120px]"
+            data-testid="input-commission-deposit-pct"
+          />
+          <p className="text-[#B3B3B8]/30 text-[10px] mt-1">Percentage of total collected upfront. Remainder due on completion.</p>
+        </div>
+        <div>
+          <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Terms Note</label>
+          <Textarea
+            value={termsNote}
+            onChange={(e) => setTermsNote(e.target.value)}
+            placeholder="50% deposit required to begin. Remaining balance due upon completion before delivery."
+            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm resize-none"
+            rows={3}
+            data-testid="input-commission-terms-note"
+          />
+          <p className="text-[#B3B3B8]/30 text-[10px] mt-1">Shown to customers on the Review & Pay step of the commission builder.</p>
+        </div>
+      </div>
+      <Button
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending}
+        className="bg-[#5D3FD3] hover:bg-[#4930b0] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold px-8 py-3 h-auto"
+        data-testid="button-commission-settings-save"
+      >
+        {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Save className="w-3.5 h-3.5 mr-2" />}
+        Save Commission Settings
+      </Button>
+    </div>
+  );
+}
 
 function BrandTab({ toast }: { toast: any }) {
   const { data: brandData, isLoading, refetch } = useQuery<Record<string, string>>({
@@ -5133,6 +5359,8 @@ function BrandTab({ toast }: { toast: any }) {
         </Button>
       </div>
 
+      <hr className="border-white/5" />
+      <CommissionSettingsPanel toast={toast} />
       <hr className="border-white/5" />
       <TestimonialsAdmin toast={toast} />
       <hr className="border-white/5" />

@@ -457,6 +457,16 @@ async function seedCommissionPricing(): Promise<void> {
       await storage.setSetting("commission_subject_fees", JSON.stringify(DEFAULT_COMMISSION_SUBJECT_FEES));
     }
 
+    // Seed deposit pct & terms note defaults if not yet set
+    const depositPctExisting = await storage.getSetting("commission_deposit_pct");
+    if (!depositPctExisting) {
+      await storage.setSetting("commission_deposit_pct", "50");
+    }
+    const termsNoteExisting = await storage.getSetting("commission_terms_note");
+    if (!termsNoteExisting) {
+      await storage.setSetting("commission_terms_note", "50% deposit required to begin. Remaining balance due upon completion before delivery.");
+    }
+
     await storage.setSetting("commission_pricing_seeded_v1", "done");
     log("[commission seed] Seeded commission pricing matrix");
   } catch (err) {

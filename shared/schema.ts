@@ -465,6 +465,11 @@ export const commissions = pgTable("commissions", {
   stripeSessionId: text("stripe_session_id"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   status: text("status").notNull().default("awaiting_deposit"),
+  depositPaidAt: timestamp("deposit_paid_at"),
+  finalPaymentLinkId: text("final_payment_link_id"),
+  finalPaymentLinkUrl: text("final_payment_link_url"),
+  finalPaymentPaidAt: timestamp("final_payment_paid_at"),
+  completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -486,6 +491,7 @@ export const commissionStatuses = [
   "deposit_paid",
   "in_progress",
   "ready",
+  "final_sent",
   "complete",
   "cancelled",
 ] as const;

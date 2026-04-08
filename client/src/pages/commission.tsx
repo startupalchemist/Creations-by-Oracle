@@ -35,6 +35,8 @@ interface PricingData {
   matrix: Record<Style, Record<Size, number>>;
   addons: Record<Format, Record<Size, number>>;
   subjectFees: Record<Style, Record<Size, number>>;
+  depositPct: number;
+  termsNote: string;
 }
 
 interface PriceBreakdown {
@@ -230,7 +232,8 @@ export default function Commission() {
     const subjectFeePerExtra = pricing.subjectFees[style]?.[size] || 0;
     const subjFee = subjectFeePerExtra * Math.max(0, extraSubjects);
     const total = base + addon + subjFee;
-    const deposit = Math.round(total / 2);
+    const pct = pricing.depositPct ?? 50;
+    const deposit = Math.round(total * pct) / 100;
     return { base, addon, subjFee, total, deposit };
   }, [pricing, style, size, format, extraSubjects]);
 
@@ -714,11 +717,19 @@ export default function Commission() {
                       </div>
                     </div>
 
+                    {/* Terms Note */}
+                    {pricing?.termsNote && (
+                      <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 mb-6">
+                        <p className="text-xs text-white/40 uppercase tracking-widest mb-1.5">Commission Terms</p>
+                        <p className="text-sm text-white/60 leading-relaxed" data-testid="text-commission-terms">{pricing.termsNote}</p>
+                      </div>
+                    )}
+
                     {/* Deposit highlight */}
                     <div className="rounded-xl border border-[#C084FC]/30 bg-[#C084FC]/8 p-5 mb-6">
                       <div className="flex items-center justify-between mb-4">
                         <div>
-                          <p className="text-xs text-[#C084FC]/70 uppercase tracking-widest mb-1">Deposit Due Today (50%)</p>
+                          <p className="text-xs text-[#C084FC]/70 uppercase tracking-widest mb-1">Deposit Due Today ({pricing?.depositPct ?? 50}%)</p>
                           <p
                             className="text-3xl font-light text-white"
                             style={{ fontFamily: "Georgia, serif" }}
@@ -808,7 +819,7 @@ export default function Commission() {
 
             {/* Trust signals */}
             <div className="mt-12 pt-8 border-t border-white/5 flex flex-wrap gap-6 justify-center lg:justify-start">
-              {["50% deposit to begin", "Balance due on completion", "Satisfaction guaranteed", "2–4 week turnaround"].map((item) => (
+              {[`${pricing?.depositPct ?? 50}% deposit to begin`, "Balance due on completion", "Satisfaction guaranteed", "2–4 week turnaround"].map((item) => (
                 <div key={item} className="flex items-center gap-2">
                   <Check size={12} className="text-[#C084FC]" />
                   <span className="text-xs text-white/30">{item}</span>

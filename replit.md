@@ -34,6 +34,7 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - `sessions` — auth sessions
 - `leads` — collector inquiries (subject, status: New Inquiry → Closed)
 - `artworks` — artwork catalog (title, slug, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, sold, status, category, featured, seoTitle, seoDescription, seoKeywords, viewCount, stripeProductId, stripePriceId, pageRegistryId, publishedAt, printsAvailable, printfulProductId, printMarkupPercent)
+- `commissions` — portrait commission orders (style, size, format, extraSubjects, basePrice, formatAddon, subjectFee, totalPrice, depositAmount, referenceImageUrls, notes, customerName/Email/Phone, stripeSessionId, stripePaymentIntentId, status, depositPaidAt, finalPaymentLinkId, finalPaymentLinkUrl, finalPaymentPaidAt, completedAt)
 - `orders` — artwork purchases (artworkId, buyerName, buyerEmail, amount, status, stripeSessionId, stripePaymentIntentId, shippingAddress)
 - `print_orders` — Printful print-on-demand orders (artworkId, buyerName, buyerEmail, printfulProductId, variantId, variantLabel, retailPrice, printfulOrderId, status, shippingAddress, stripeSessionId)
 - `analyticsEvents` — page views, CTR, CTA clicks, purchases (page, eventType, sessionId, referrer, utmSource/Medium/Campaign, metadata)
@@ -57,8 +58,14 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - GET `/api/analytics/summary` — analytics summary (admin only)
 - GET/POST/PATCH/DELETE `/api/pages` — page registry CRUD
 - POST `/api/checkout` — Stripe checkout session creation
-- POST `/api/checkout/webhook` — Stripe webhook (marks artwork sold, handles print orders)
+- POST `/api/checkout/webhook` — Stripe webhook (marks artwork sold, handles print orders, commission deposit paid, commission final payment completed)
 - GET `/api/orders` — order list (admin only)
+- GET `/api/commissions` — commission list (admin only)
+- GET `/api/commissions/:id` — single commission (admin only)
+- PATCH `/api/commissions/:id` — update commission status/notes (admin only)
+- POST `/api/commissions/:id/final-payment` — create Stripe Payment Link for remaining balance, update status to final_sent, email collector (admin only)
+- GET `/api/commission/pricing` — public pricing matrix + depositPct + termsNote
+- POST `/api/commissions` — public commission submission (creates PaymentIntent for deposit)
 - POST `/api/print-checkout` — create Stripe checkout for print order
 - GET `/api/print-orders` — print order list (admin only)
 - PATCH `/api/print-orders/:id` — update print order status
@@ -71,7 +78,7 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - `/shop/:slug` — Individual artwork detail + Stripe purchase flow
 - `/about` — Artist bio and mediums
 - `/contact` — General inquiry/contact form
-- `/commission` — 7-step portrait commission builder (style → size → format → subjects → references → notes → contact info; Stripe Checkout for 50% deposit)
+- `/commissions` — 7-step portrait commission builder (style → size → format → subjects → references → contact info → review+pay; Stripe PaymentIntent for configurable deposit %; shows commission terms note)
 - `/blog` — Blog listing
 - `/blog/:slug` — Blog post
 
@@ -79,7 +86,7 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - **The Dyno** — analytics dashboard (TheDyno component)
 - **Dashboard** — lead pipeline summary
 - **Shop** — artwork manager (create/edit/publish/delete + AI enhance + image upload + prints toggle)
-- **Orders** — Stripe purchase records (sub-tabs: Original Works | Print Orders)
+- **Orders** — Stripe purchase records (sub-tabs: Original Works | Print Orders | Commissions)
 - **Inquiries** — collector lead management
 - **Blog** — AI blog content generation
 - **Newsletter** — email newsletter
@@ -89,6 +96,17 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - **SEO** — SEO settings and blog services
 - **Blog Services** — controls AI blog topic research context
 - **Gallery** — photo gallery section/item management
+- **Brand** — brand settings (name, tagline, socials) + Commission Settings (deposit %, terms note) + Testimonials + Exhibitions
+
+## Commission Order Lifecycle
+- Status flow: awaiting_deposit → deposit_paid → in_progress → ready → final_sent → complete (cancelled at any time)
+- Deposit % configurable via settings key `commission_deposit_pct` (default 50%)
+- Terms note configurable via settings key `commission_terms_note` (shown on Review step)
+- Admin can update status via dropdown in Orders > Commissions
+- Admin sends final payment link via "Send Final Invoice" button (creates Stripe Payment Link)
+- Stripe webhook auto-advances: payment_intent.succeeded → deposit_paid; checkout.session.completed with commissionId → complete
+- Both state changes send collector + artist emails via Resend
+- New DB columns: depositPaidAt, finalPaymentLinkId, finalPaymentLinkUrl, finalPaymentPaidAt, completedAt
 
 ## Print-on-Demand (Printful)
 - Admin can toggle `printsAvailable` per artwork via switch in Shop tab cards

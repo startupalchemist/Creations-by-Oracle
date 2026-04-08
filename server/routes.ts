@@ -3067,7 +3067,57 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         }
 
       }
-      // Handle commission deposit via PaymentIntent
+      // Handle commission final payment via payment link (checkout.session.completed with commissionId metadata)
+      if (event.type === "checkout.session.completed" && event.data.object.metadata?.commissionId) {
+        const session = event.data.object;
+        const commissionId = parseInt(session.metadata.commissionId);
+        if (!isNaN(commissionId)) {
+          try {
+            const commission = await storage.getCommissionById(commissionId);
+            if (commission && commission.status === "final_sent") {
+              await storage.updateCommission(commissionId, {
+                status: "complete",
+                finalPaymentPaidAt: new Date(),
+                completedAt: new Date(),
+              });
+              try {
+                const baseUrl = process.env.REPLIT_DEV_DOMAIN
+                  ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+                  : process.env.REPLIT_DEPLOYMENT_URL
+                  ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+                  : "http://localhost:5000";
+                const { client, fromEmail } = await getResendClient();
+                const totalPrice = parseFloat(commission.totalPrice);
+                const depositAmount = parseFloat(commission.depositAmount);
+                const finalAmount = totalPrice - depositAmount;
+                await client.emails.send({
+                  from: fromEmail,
+                  to: commission.customerEmail,
+                  subject: "Commission Complete — Thank You",
+                  html: buildCommissionCompleteEmail({ commission, totalPrice, finalAmount, baseUrl }),
+                });
+                const artistEmail = await storage.getSetting("artist_email");
+                if (artistEmail) {
+                  await client.emails.send({
+                    from: fromEmail,
+                    to: artistEmail,
+                    subject: `Final Payment Received — Commission #${commission.id} from ${commission.customerName}`,
+                    html: buildCommissionCompleteArtistEmail({ commission, totalPrice, finalAmount }),
+                  });
+                }
+              } catch (emailErr: unknown) {
+                const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+                console.error("Commission complete email error:", msg);
+              }
+            }
+          } catch (commErr: unknown) {
+            const msg = commErr instanceof Error ? commErr.message : String(commErr);
+            console.error("Commission final payment webhook error:", msg);
+          }
+        }
+        return res.json({ received: true });
+      }
+
       if (event.type === "payment_intent.succeeded") {
         const paymentIntent = event.data.object;
         if (paymentIntent.metadata?.commissionType === "deposit") {
@@ -3076,6 +3126,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
             await storage.updateCommission(commission.id, {
               status: "deposit_paid",
               stripePaymentIntentId: paymentIntent.id,
+              depositPaidAt: new Date(),
             });
             try {
               const baseUrl = process.env.REPLIT_DEV_DOMAIN
@@ -3192,10 +3243,12 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
 
   app.get("/api/commission/pricing", async (_req, res) => {
     try {
-      const [matrixRaw, addonsRaw, subjectFeesRaw] = await Promise.all([
+      const [matrixRaw, addonsRaw, subjectFeesRaw, depositPctRaw, termsNoteRaw] = await Promise.all([
         storage.getSetting("commission_price_matrix"),
         storage.getSetting("commission_format_addons"),
         storage.getSetting("commission_subject_fees"),
+        storage.getSetting("commission_deposit_pct"),
+        storage.getSetting("commission_terms_note"),
       ]);
 
       const { DEFAULT_COMMISSION_PRICE_MATRIX, DEFAULT_COMMISSION_FORMAT_ADDONS, DEFAULT_COMMISSION_SUBJECT_FEES } = await import("@shared/schema");
@@ -3203,8 +3256,10 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       const matrix = matrixRaw ? JSON.parse(matrixRaw) : DEFAULT_COMMISSION_PRICE_MATRIX;
       const addons = addonsRaw ? JSON.parse(addonsRaw) : DEFAULT_COMMISSION_FORMAT_ADDONS;
       const subjectFees = subjectFeesRaw ? JSON.parse(subjectFeesRaw) : DEFAULT_COMMISSION_SUBJECT_FEES;
+      const depositPct = depositPctRaw ? parseInt(depositPctRaw) : 50;
+      const termsNote = termsNoteRaw || "";
 
-      res.json({ matrix, addons, subjectFees });
+      res.json({ matrix, addons, subjectFees, depositPct, termsNote });
     } catch (e: any) {
       res.status(500).json({ message: "Failed to fetch pricing" });
     }
@@ -3244,16 +3299,18 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       }
 
       // Load pricing matrix from settings
-      const [matrixRaw, addonsRaw, subjectFeesRaw] = await Promise.all([
+      const [matrixRaw, addonsRaw, subjectFeesRaw, depositPctRaw] = await Promise.all([
         storage.getSetting("commission_price_matrix"),
         storage.getSetting("commission_format_addons"),
         storage.getSetting("commission_subject_fees"),
+        storage.getSetting("commission_deposit_pct"),
       ]);
 
       const { DEFAULT_COMMISSION_PRICE_MATRIX, DEFAULT_COMMISSION_FORMAT_ADDONS, DEFAULT_COMMISSION_SUBJECT_FEES } = await import("@shared/schema");
       const matrix = matrixRaw ? JSON.parse(matrixRaw) : DEFAULT_COMMISSION_PRICE_MATRIX;
       const addons = addonsRaw ? JSON.parse(addonsRaw) : DEFAULT_COMMISSION_FORMAT_ADDONS;
       const subjectFees = subjectFeesRaw ? JSON.parse(subjectFeesRaw) : DEFAULT_COMMISSION_SUBJECT_FEES;
+      const depositPct = depositPctRaw ? Math.max(1, Math.min(100, parseInt(depositPctRaw))) : 50;
 
       const basePrice = matrix[style]?.[size];
       if (basePrice === undefined) {
@@ -3265,7 +3322,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       const numExtra = Math.max(0, parseInt(String(extraSubjects || 0)));
       const subjectFee = subjectFeePerExtra * numExtra;
       const totalPrice = basePrice + formatAddon + subjectFee;
-      const depositAmount = Math.round(totalPrice * 50) / 100; // 50% deposit
+      const depositAmount = Math.round(totalPrice * depositPct) / 100;
 
       const baseUrl = process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
@@ -3384,6 +3441,116 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       res.json(commission);
     } catch {
       res.status(500).json({ message: "Failed to fetch commission" });
+    }
+  });
+
+  app.patch("/api/commissions/:id", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status, notes } = req.body;
+      const validStatuses = ["awaiting_deposit", "deposit_paid", "in_progress", "ready", "final_sent", "complete", "cancelled"];
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const updateData: Record<string, unknown> = {};
+      if (status) updateData.status = status;
+      if (notes !== undefined) updateData.notes = notes;
+      const updated = await storage.updateCommission(id, updateData as any);
+      if (!updated) return res.status(404).json({ message: "Commission not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update commission" });
+    }
+  });
+
+  app.post("/api/commissions/:id/final-payment", authMiddleware, requireRole("root", "admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const commission = await storage.getCommissionById(id);
+      if (!commission) return res.status(404).json({ message: "Commission not found" });
+
+      const allowedStatuses = ["deposit_paid", "in_progress", "ready"];
+      if (!allowedStatuses.includes(commission.status)) {
+        return res.status(400).json({ message: `Cannot send final payment link — commission is ${commission.status}` });
+      }
+
+      const totalPrice = parseFloat(commission.totalPrice);
+      const depositAmount = parseFloat(commission.depositAmount);
+      const finalAmount = totalPrice - depositAmount;
+
+      if (finalAmount <= 0) {
+        return res.status(400).json({ message: "No remaining balance to collect" });
+      }
+
+      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeKey) {
+        return res.status(400).json({ message: "Stripe not configured — cannot create payment link" });
+      }
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DEPLOYMENT_URL
+        ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+        : "http://localhost:5000";
+
+      const Stripe = require("stripe");
+      const stripe = new Stripe(stripeKey);
+
+      const price = await stripe.prices.create({
+        currency: "usd",
+        unit_amount: Math.round(finalAmount * 100),
+        product_data: {
+          name: `${commission.style} Portrait Commission — ${commission.size} (Final Balance)`,
+        },
+      });
+
+      const paymentLink = await stripe.paymentLinks.create({
+        line_items: [{ price: price.id, quantity: 1 }],
+        metadata: {
+          commissionId: String(commission.id),
+          commissionType: "final",
+        },
+        after_completion: {
+          type: "redirect",
+          redirect: { url: `${baseUrl}/commissions/thank-you?commission=${commission.id}` },
+        },
+      });
+
+      await storage.updateCommission(id, {
+        status: "final_sent",
+        finalPaymentLinkId: paymentLink.id,
+        finalPaymentLinkUrl: paymentLink.url,
+      });
+
+      // Send collector email with payment link
+      try {
+        const { client, fromEmail } = await getResendClient();
+        await client.emails.send({
+          from: fromEmail,
+          to: commission.customerEmail,
+          subject: `Your Commission is Ready — Final Payment Due`,
+          html: buildFinalPaymentEmail({ commission, totalPrice, depositAmount, finalAmount, paymentLinkUrl: paymentLink.url, baseUrl }),
+        });
+        const artistEmail = await storage.getSetting("artist_email");
+        if (artistEmail) {
+          await client.emails.send({
+            from: fromEmail,
+            to: artistEmail,
+            subject: `Final Payment Link Sent — Commission #${commission.id} (${commission.customerName})`,
+            html: buildFinalPaymentArtistEmail({ commission, totalPrice, finalAmount, paymentLinkUrl: paymentLink.url }),
+          });
+        }
+      } catch (emailErr: unknown) {
+        const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+        console.error("Final payment email error:", msg);
+      }
+
+      const updated = await storage.getCommissionById(id);
+      res.json({ commission: updated, paymentLinkUrl: paymentLink.url });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Final payment error:", msg);
+      res.status(500).json({ message: "Failed to create final payment link", error: msg });
     }
   });
 
@@ -3527,6 +3694,80 @@ function buildCollectorEmail({ commission, totalPrice, depositAmount, baseUrl }:
         </table>
       </div>
       <p style="color: #B3B3B8; font-size: 12px; line-height: 1.6;">Questions? Reply to this email or visit <a href="${baseUrl}/contact" style="color: #C084FC;">creations by oracle</a>.</p>
+    </div>
+  `;
+}
+
+function buildFinalPaymentEmail({ commission, totalPrice, depositAmount, finalAmount, paymentLinkUrl, baseUrl }: { commission: Commission; totalPrice: number; depositAmount: number; finalAmount: number; paymentLinkUrl: string; baseUrl: string }) {
+  return `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 8px 0; font-family: Georgia, serif;">Your Commission is Ready</h2>
+      <p style="color: #B3B3B8; font-size: 14px; line-height: 1.6; margin-bottom: 28px;">Your ${commission.style} portrait is complete. Please pay the remaining balance to receive your finished work.</p>
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Commission</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.style} — ${commission.size}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Total</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">$${totalPrice.toLocaleString()}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Deposit Paid</td><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">−$${depositAmount.toLocaleString()}</td></tr>
+          <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Balance Due</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">$${finalAmount.toLocaleString()}</td></tr>
+        </table>
+      </div>
+      <div style="text-align: center; margin-bottom: 28px;">
+        <a href="${paymentLinkUrl}" style="display: inline-block; background: #C084FC; color: #0B0B0D; text-decoration: none; font-size: 13px; font-weight: 600; padding: 14px 32px; border-radius: 6px; letter-spacing: 0.05em;">Pay Final Balance →</a>
+      </div>
+      <p style="color: #B3B3B8; font-size: 12px; line-height: 1.6;">Questions? Reply to this email or visit <a href="${baseUrl}/contact" style="color: #C084FC;">creations by oracle</a>.</p>
+    </div>
+  `;
+}
+
+function buildFinalPaymentArtistEmail({ commission, totalPrice, finalAmount, paymentLinkUrl }: { commission: Commission; totalPrice: number; finalAmount: number; paymentLinkUrl: string }) {
+  return `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Commission Update</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 24px 0; font-family: Georgia, serif;">Final Payment Link Sent</h2>
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Customer</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.customerName}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Commission</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.style} — ${commission.size}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Total</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">$${totalPrice.toLocaleString()}</td></tr>
+          <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Balance to Collect</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">$${finalAmount.toLocaleString()}</td></tr>
+        </table>
+      </div>
+      <p style="color: #B3B3B8; font-size: 12px;">Payment link: <a href="${paymentLinkUrl}" style="color: #C084FC;">${paymentLinkUrl}</a></p>
+    </div>
+  `;
+}
+
+function buildCommissionCompleteEmail({ commission, totalPrice, finalAmount, baseUrl }: { commission: Commission; totalPrice: number; finalAmount: number; baseUrl: string }) {
+  return `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Creations by Oracle</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 8px 0; font-family: Georgia, serif;">Thank you, ${commission.customerName.split(" ")[0]}.</h2>
+      <p style="color: #B3B3B8; font-size: 14px; line-height: 1.6; margin-bottom: 28px;">Your final payment has been received. Your ${commission.style} portrait commission is now complete and will be delivered shortly.</p>
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Commission</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.style} — ${commission.size}</td></tr>
+          <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Total Paid</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">$${totalPrice.toLocaleString()}</td></tr>
+        </table>
+      </div>
+      <p style="color: #B3B3B8; font-size: 12px; line-height: 1.6;">We're so grateful for the opportunity to create this piece for you. Questions? Reply to this email or visit <a href="${baseUrl}/contact" style="color: #C084FC;">creations by oracle</a>.</p>
+    </div>
+  `;
+}
+
+function buildCommissionCompleteArtistEmail({ commission, totalPrice, finalAmount }: { commission: Commission; totalPrice: number; finalAmount: number }) {
+  return `
+    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0B0B0D; color: #F5F5F7; padding: 40px 24px; border-radius: 8px;">
+      <p style="color: #C084FC; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 24px;">Commission Complete</p>
+      <h2 style="font-size: 24px; font-weight: 300; margin: 0 0 24px 0; font-family: Georgia, serif;">${commission.style} — ${commission.size}</h2>
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 20px; margin-bottom: 28px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Customer</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.customerName}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">Email</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right;">${commission.customerEmail}</td></tr>
+          <tr><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px;">Total Paid</td><td style="color: #C084FC; font-size: 13px; font-weight: 600; padding: 10px 0 6px; text-align: right;">$${totalPrice.toLocaleString()}</td></tr>
+          <tr><td style="color: #B3B3B8; font-size: 12px; padding: 6px 0;">Final Payment</td><td style="color: #F5F5F7; font-size: 12px; padding: 6px 0; text-align: right;">$${finalAmount.toLocaleString()}</td></tr>
+        </table>
+      </div>
     </div>
   `;
 }
