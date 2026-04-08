@@ -106,7 +106,7 @@ Dark-themed artist website for an independent contemporary artist specializing i
 - Admin sends final payment link via "Send Final Invoice" button (creates Stripe Payment Link)
 - Stripe webhook auto-advances: payment_intent.succeeded → deposit_paid; checkout.session.completed with commissionId → complete
 - Both state changes send collector + artist emails via Resend
-- New DB columns: depositPaidAt, finalPaymentLinkId, finalPaymentLinkUrl, finalPaymentPaidAt, completedAt
+- Per-stage lifecycle timestamps: depositPaidAt, inProgressAt, readyAt, finalSentAt, finalPaymentPaidAt, completedAt
 
 ## Print-on-Demand (Printful)
 - Admin can toggle `printsAvailable` per artwork via switch in Shop tab cards

@@ -3452,10 +3452,17 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
-      const updateData: Record<string, unknown> = {};
-      if (status) updateData.status = status;
-      if (notes !== undefined) updateData.notes = notes;
-      const updated = await storage.updateCommission(id, updateData as any);
+      const updateData: Partial<{ status: string; notes: string | null; inProgressAt: Date; readyAt: Date; finalSentAt: Date; completedAt: Date }> = {};
+      if (status) {
+        updateData.status = status;
+        // Set per-stage lifecycle timestamps when admin manually advances status
+        if (status === "in_progress") updateData.inProgressAt = new Date();
+        else if (status === "ready") updateData.readyAt = new Date();
+        else if (status === "final_sent") updateData.finalSentAt = new Date();
+        else if (status === "complete") updateData.completedAt = new Date();
+      }
+      if (notes !== undefined) updateData.notes = notes ?? null;
+      const updated = await storage.updateCommission(id, updateData);
       if (!updated) return res.status(404).json({ message: "Commission not found" });
       res.json(updated);
     } catch {
@@ -3520,6 +3527,7 @@ frameGuide: "center", "move_left", "move_right", "move_up", "move_down", "zoom_o
         status: "final_sent",
         finalPaymentLinkId: paymentLink.id,
         finalPaymentLinkUrl: paymentLink.url,
+        finalSentAt: new Date(),
       });
 
       // Send collector email with payment link

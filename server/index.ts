@@ -446,29 +446,32 @@ async function seedTestimonials(): Promise<void> {
 async function seedCommissionPricing(): Promise<void> {
   try {
     const flag = await storage.getSetting("commission_pricing_seeded_v1");
-    if (flag === "done") return;
+    if (flag !== "done") {
+      const { DEFAULT_COMMISSION_PRICE_MATRIX, DEFAULT_COMMISSION_FORMAT_ADDONS, DEFAULT_COMMISSION_SUBJECT_FEES } = await import("@shared/schema");
 
-    const { DEFAULT_COMMISSION_PRICE_MATRIX, DEFAULT_COMMISSION_FORMAT_ADDONS, DEFAULT_COMMISSION_SUBJECT_FEES } = await import("@shared/schema");
+      const existing = await storage.getSetting("commission_price_matrix");
+      if (!existing) {
+        await storage.setSetting("commission_price_matrix", JSON.stringify(DEFAULT_COMMISSION_PRICE_MATRIX));
+        await storage.setSetting("commission_format_addons", JSON.stringify(DEFAULT_COMMISSION_FORMAT_ADDONS));
+        await storage.setSetting("commission_subject_fees", JSON.stringify(DEFAULT_COMMISSION_SUBJECT_FEES));
+      }
 
-    const existing = await storage.getSetting("commission_price_matrix");
-    if (!existing) {
-      await storage.setSetting("commission_price_matrix", JSON.stringify(DEFAULT_COMMISSION_PRICE_MATRIX));
-      await storage.setSetting("commission_format_addons", JSON.stringify(DEFAULT_COMMISSION_FORMAT_ADDONS));
-      await storage.setSetting("commission_subject_fees", JSON.stringify(DEFAULT_COMMISSION_SUBJECT_FEES));
+      await storage.setSetting("commission_pricing_seeded_v1", "done");
+      log("[commission seed] Seeded commission pricing matrix");
     }
 
-    // Seed deposit pct & terms note defaults if not yet set
+    // Always ensure deposit pct & terms note keys exist — run on every startup
+    // so existing deployments (where the v1 flag was already set) also get these
     const depositPctExisting = await storage.getSetting("commission_deposit_pct");
     if (!depositPctExisting) {
       await storage.setSetting("commission_deposit_pct", "50");
+      log("[commission seed] Seeded commission_deposit_pct default");
     }
     const termsNoteExisting = await storage.getSetting("commission_terms_note");
     if (!termsNoteExisting) {
       await storage.setSetting("commission_terms_note", "50% deposit required to begin. Remaining balance due upon completion before delivery.");
+      log("[commission seed] Seeded commission_terms_note default");
     }
-
-    await storage.setSetting("commission_pricing_seeded_v1", "done");
-    log("[commission seed] Seeded commission pricing matrix");
   } catch (err) {
     log(`[commission seed] Failed: ${err}`);
   }
