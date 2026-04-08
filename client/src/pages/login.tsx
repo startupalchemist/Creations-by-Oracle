@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
-import logoMark from "@assets/IMG_4743_1773978350169.png";
+const logoMark = "/favicon.png";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -32,9 +32,9 @@ export default function Login() {
     <div className="bg-[#0B0B0D] min-h-screen flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-3 mb-10">
-          <img src={logoMark} alt="Reign Services" className="h-10 w-auto" />
+          <img src={logoMark} alt="Creations by Oracle" className="h-10 w-auto" />
           <span className="text-[#F5F5F7] font-semibold tracking-[0.2em] text-sm uppercase">
-            Reign Services
+            Creations by Oracle
           </span>
         </div>
 

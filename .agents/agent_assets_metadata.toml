@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "6NDGBvwMIYbSoriR1LA8L"
+uri = "file://client/public/og-image.png"
+type = "image"
+title = "creations-by-oracle-og-image"
+
+[[generated]]
+id = "oEFVxVF4FTQtAhXMqzVf_"
+uri = "file://client/public/favicon.png"
+type = "image"
+title = "oracle-favicon-icon"

@@ -1,6 +1,6 @@
 import { useParams, useSearch } from "wouter";
 import { CheckCircle2 } from "lucide-react";
-import logoMark from "@assets/IMG_4743_1773978350169.png";
+const logoMark = "/favicon.png";
 
 const faces = [
   { score: 5, label: "Excellent", emoji: "\u{1F603}" },
@@ -22,7 +22,7 @@ export default function Rate() {
     return (
       <div className="bg-[#0B0B0D] min-h-screen flex items-center justify-center px-6">
         <div className="text-center max-w-sm">
-          <img src={logoMark} alt="Reign Services" className="h-8 mx-auto mb-8 opacity-60" />
+          <img src={logoMark} alt="Creations by Oracle" className="h-8 mx-auto mb-8 opacity-60" />
           <CheckCircle2 className="w-12 h-12 text-[#5D3FD3] mx-auto mb-6" />
           <h1 className="text-2xl font-bold text-[#F5F5F7] uppercase tracking-tight mb-3" data-testid="text-rating-thanks">
             Thank you
@@ -43,7 +43,7 @@ export default function Rate() {
   return (
     <div className="bg-[#0B0B0D] min-h-screen flex items-center justify-center px-6">
       <div className="text-center max-w-md">
-        <img src={logoMark} alt="Reign Services" className="h-8 mx-auto mb-8 opacity-60" />
+        <img src={logoMark} alt="Creations by Oracle" className="h-8 mx-auto mb-8 opacity-60" />
         <h1 className="text-2xl font-bold text-[#F5F5F7] uppercase tracking-tight mb-3" data-testid="text-rating-headline">
           How was your experience?
         </h1>
