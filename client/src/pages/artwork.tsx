@@ -563,7 +563,9 @@ export default function ArtworkPage() {
                     <span className="text-3xl font-light text-white" data-testid="text-artwork-price">
                       ${parseFloat(String(artwork.price)).toLocaleString()}
                     </span>
-                    <span className="text-[#B3B3B8]/40 text-xs uppercase tracking-[0.15em]">USD · Original</span>
+                    <span className="text-[#B3B3B8]/40 text-xs uppercase tracking-[0.15em]">
+                      USD · {artwork.category === "Digital Art & NFTs" ? "Digital" : "Original"}
+                    </span>
                   </div>
 
                   {!showBuyForm ? (
@@ -577,7 +579,7 @@ export default function ArtworkPage() {
                         data-testid="button-buy-artwork"
                       >
                         <ShoppingBag className="w-3.5 h-3.5 mr-2" />
-                        Purchase
+                        {artwork.category === "Digital Art & NFTs" ? "Purchase Digital" : "Purchase"}
                       </Button>
                       <Button
                         variant="ghost"
@@ -609,58 +611,71 @@ export default function ArtworkPage() {
                         data-testid="input-buyer-email"
                       />
 
-                      <p className="text-[9px] uppercase tracking-[0.18em] text-[#B3B3B8]/40 pt-1">Shipping Address</p>
-                      <Input
-                        value={shippingName}
-                        onChange={(e) => setShippingName(e.target.value)}
-                        placeholder="Recipient name (if different)"
-                        className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
-                        data-testid="input-shipping-name"
-                      />
-                      <Input
-                        value={shippingStreet}
-                        onChange={(e) => setShippingStreet(e.target.value)}
-                        placeholder="Street address"
-                        className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
-                        data-testid="input-shipping-street"
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          value={shippingCity}
-                          onChange={(e) => setShippingCity(e.target.value)}
-                          placeholder="City"
-                          className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
-                          data-testid="input-shipping-city"
-                        />
-                        <Input
-                          value={shippingState}
-                          onChange={(e) => setShippingState(e.target.value)}
-                          placeholder="State / Province"
-                          className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
-                          data-testid="input-shipping-state"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          value={shippingZip}
-                          onChange={(e) => setShippingZip(e.target.value)}
-                          placeholder="Postal code"
-                          className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
-                          data-testid="input-shipping-zip"
-                        />
-                        <Input
-                          value={shippingCountry}
-                          onChange={(e) => setShippingCountry(e.target.value)}
-                          placeholder="Country"
-                          className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
-                          data-testid="input-shipping-country"
-                        />
-                      </div>
+                      {artwork.category !== "Digital Art & NFTs" && (
+                        <>
+                          <p className="text-[9px] uppercase tracking-[0.18em] text-[#B3B3B8]/40 pt-1">Shipping Address</p>
+                          <Input
+                            value={shippingName}
+                            onChange={(e) => setShippingName(e.target.value)}
+                            placeholder="Recipient name (if different)"
+                            className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                            data-testid="input-shipping-name"
+                          />
+                          <Input
+                            value={shippingStreet}
+                            onChange={(e) => setShippingStreet(e.target.value)}
+                            placeholder="Street address"
+                            className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                            data-testid="input-shipping-street"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              value={shippingCity}
+                              onChange={(e) => setShippingCity(e.target.value)}
+                              placeholder="City"
+                              className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                              data-testid="input-shipping-city"
+                            />
+                            <Input
+                              value={shippingState}
+                              onChange={(e) => setShippingState(e.target.value)}
+                              placeholder="State / Province"
+                              className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                              data-testid="input-shipping-state"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              value={shippingZip}
+                              onChange={(e) => setShippingZip(e.target.value)}
+                              placeholder="Postal code"
+                              className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                              data-testid="input-shipping-zip"
+                            />
+                            <Input
+                              value={shippingCountry}
+                              onChange={(e) => setShippingCountry(e.target.value)}
+                              placeholder="Country"
+                              className="bg-[#141416] border-white/10 text-[#F5F5F7] text-sm"
+                              data-testid="input-shipping-country"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {artwork.category === "Digital Art & NFTs" && (
+                        <p className="text-[#B3B3B8]/40 text-xs pt-1">
+                          Your high-resolution file will be delivered to your email after purchase.
+                        </p>
+                      )}
 
                       <div className="flex gap-2 pt-1">
                         <Button
                           className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs uppercase tracking-[0.18em] font-semibold h-auto py-2.5 flex-1"
-                          disabled={!buyerName.trim() || !buyerEmail.trim() || !shippingStreet.trim() || !shippingCity.trim() || !shippingZip.trim() || checkoutMutation.isPending}
+                          disabled={
+                            !buyerName.trim() || !buyerEmail.trim() || checkoutMutation.isPending ||
+                            (artwork.category !== "Digital Art & NFTs" && (!shippingStreet.trim() || !shippingCity.trim() || !shippingZip.trim()))
+                          }
                           onClick={() => checkoutMutation.mutate()}
                           data-testid="button-proceed-checkout"
                         >

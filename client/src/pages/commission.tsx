@@ -225,6 +225,8 @@ export default function Commission() {
     }
   }, []);
 
+  const isDigitalCommission = format === "Digital";
+
   const calcPrice = useCallback((): PriceBreakdown => {
     if (!pricing || !style || !size) return { base: 0, addon: 0, subjFee: 0, total: 0, deposit: 0 };
     const base = pricing.matrix[style]?.[size] || 0;
@@ -232,6 +234,9 @@ export default function Commission() {
     const subjectFeePerExtra = pricing.subjectFees[style]?.[size] || 0;
     const subjFee = subjectFeePerExtra * Math.max(0, extraSubjects);
     const total = base + addon + subjFee;
+    if (format === "Digital") {
+      return { base, addon, subjFee, total, deposit: total };
+    }
     const pct = pricing.depositPct ?? 50;
     const deposit = Math.round(total * pct) / 100;
     return { base, addon, subjFee, total, deposit };
@@ -337,7 +342,9 @@ export default function Commission() {
             Commission Confirmed
           </h1>
           <p className="text-white/50 text-sm mb-8 leading-relaxed">
-            Your deposit has been received. Oracle will review your request and reach out within 2–3 business days to begin.
+            {format === "Digital"
+              ? "Your payment has been received. Oracle will review your request and reach out within 2–3 business days to begin work on your digital piece."
+              : "Your deposit has been received. Oracle will review your request and reach out within 2–3 business days to begin."}
           </p>
           <Button
             onClick={() => setLocation("/")}
@@ -652,7 +659,9 @@ export default function Commission() {
                   <div>
                     <h2 className="text-xl font-light mb-2 text-white/80">Review your commission</h2>
                     <p className="text-white/40 text-sm mb-8">
-                      Confirm details, then enter your card to pay the 50% deposit.
+                      {isDigitalCommission
+                        ? "Confirm details, then enter your card to pay in full. Digital commissions are paid upfront."
+                        : "Confirm details, then enter your card to pay the 50% deposit."}
                     </p>
 
                     {/* Order summary */}
@@ -725,11 +734,13 @@ export default function Commission() {
                       </div>
                     )}
 
-                    {/* Deposit highlight */}
+                    {/* Deposit / Full Payment highlight */}
                     <div className="rounded-xl border border-[#C084FC]/30 bg-[#C084FC]/8 p-5 mb-6">
                       <div className="flex items-center justify-between mb-4">
                         <div>
-                          <p className="text-xs text-[#C084FC]/70 uppercase tracking-widest mb-1">Deposit Due Today ({pricing?.depositPct ?? 50}%)</p>
+                          <p className="text-xs text-[#C084FC]/70 uppercase tracking-widest mb-1">
+                            {isDigitalCommission ? "Full Payment Due Today (Digital)" : `Deposit Due Today (${pricing?.depositPct ?? 50}%)`}
+                          </p>
                           <p
                             className="text-3xl font-light text-white"
                             style={{ fontFamily: "Georgia, serif" }}
@@ -737,9 +748,14 @@ export default function Commission() {
                           >
                             ${priceData.deposit.toLocaleString()}
                           </p>
-                          <p className="text-xs text-white/40 mt-1">
-                            Remaining ${(priceData.total - priceData.deposit).toLocaleString()} due on completion
-                          </p>
+                          {!isDigitalCommission && (
+                            <p className="text-xs text-white/40 mt-1">
+                              Remaining ${(priceData.total - priceData.deposit).toLocaleString()} due on completion
+                            </p>
+                          )}
+                          {isDigitalCommission && (
+                            <p className="text-xs text-white/40 mt-1">High-res digital file delivered on completion</p>
+                          )}
                         </div>
                         <Lock size={20} className="text-[#C084FC]/60" />
                       </div>
@@ -819,7 +835,10 @@ export default function Commission() {
 
             {/* Trust signals */}
             <div className="mt-12 pt-8 border-t border-white/5 flex flex-wrap gap-6 justify-center lg:justify-start">
-              {[`${pricing?.depositPct ?? 50}% deposit to begin`, "Balance due on completion", "Satisfaction guaranteed", "2–4 week turnaround"].map((item) => (
+              {(isDigitalCommission
+                ? ["Full payment upfront", "High-res file delivered", "Satisfaction guaranteed", "2–4 week turnaround"]
+                : [`${pricing?.depositPct ?? 50}% deposit to begin`, "Balance due on completion", "Satisfaction guaranteed", "2–4 week turnaround"]
+              ).map((item) => (
                 <div key={item} className="flex items-center gap-2">
                   <Check size={12} className="text-[#C084FC]" />
                   <span className="text-xs text-white/30">{item}</span>
@@ -907,7 +926,9 @@ export default function Commission() {
                       </p>
                     </div>
                     <div className="p-3 rounded-lg bg-[#C084FC]/10 border border-[#C084FC]/20">
-                      <p className="text-xs text-white/40 mb-0.5">Deposit due now (50%)</p>
+                      <p className="text-xs text-white/40 mb-0.5">
+                        {isDigitalCommission ? "Full payment (Digital)" : "Deposit due now (50%)"}
+                      </p>
                       <p data-testid="text-sticky-deposit" className="text-xl font-light text-[#C084FC]">
                         ${deposit.toLocaleString()}
                       </p>
@@ -921,7 +942,10 @@ export default function Commission() {
               )}
 
               <div className="mt-5 space-y-2">
-                {["Secure card payment via Stripe", "Balance due on completion", "2–4 week turnaround"].map((item) => (
+                {(isDigitalCommission
+                  ? ["Secure card payment via Stripe", "Full payment upfront", "High-res file on completion"]
+                  : ["Secure card payment via Stripe", "Balance due on completion", "2–4 week turnaround"]
+                ).map((item) => (
                   <div key={item} className="flex items-center gap-2">
                     <Check size={10} className="text-[#C084FC] flex-shrink-0" />
                     <span className="text-xs text-white/30">{item}</span>
@@ -953,7 +977,9 @@ export default function Commission() {
             </div>
             <div className="w-px h-8 bg-white/10" />
             <div>
-              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-0.5">Deposit (50%)</p>
+              <p className="text-[10px] text-white/30 uppercase tracking-widest mb-0.5">
+                {isDigitalCommission ? "Due in Full" : "Deposit (50%)"}
+              </p>
               <p
                 data-testid="text-commission-deposit"
                 className="text-lg font-light text-[#C084FC]"
