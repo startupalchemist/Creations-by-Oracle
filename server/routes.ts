@@ -2452,6 +2452,18 @@ Generate only the requested fields. Respond in this exact JSON format:
         const existingSlug = await storage.getArtworkBySlug(slug2);
         updates.slug = (existingSlug && existingSlug.id !== id) ? slug2 + "-" + Date.now().toString(36) : slug2;
       }
+      if (updates.slug) {
+        const existingPage = existingArtwork?.pageRegistryId ? await storage.getPageBySlug(`shop/${existingArtwork.slug}`) : undefined;
+        if (existingPage && existingPage.linkedEntityType === "artwork" && existingPage.linkedEntityId === id) {
+          await storage.updatePage(existingPage.id, {
+            slug: `shop/${updates.slug}`,
+            title: updates.title || existingArtwork?.title || existingPage.title,
+            seoTitle: updates.seoTitle ?? existingArtwork?.seoTitle ?? existingArtwork?.title,
+            seoDescription: updates.seoDescription ?? existingArtwork?.seoDescription ?? existingArtwork?.description.substring(0, 155),
+            seoKeywords: updates.seoKeywords ?? existingArtwork?.seoKeywords ?? [],
+          });
+        }
+      }
       const artwork = await storage.updateArtwork(id, updates);
       if (!artwork) return res.status(404).json({ message: "Artwork not found" });
       if (updates.status) {
