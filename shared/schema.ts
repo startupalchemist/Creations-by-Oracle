@@ -390,7 +390,7 @@ export type InsertArtwork = z.infer<typeof insertArtworkSchema>;
 export type Artwork = typeof artworks.$inferSelect;
 
 export const artworkStatuses = ["draft", "published", "archived"] as const;
-export const artworkCategories = ["Abstract", "Portrait", "3D Installation", "Sculpture", "Mixed Media"] as const;
+export const artworkCategories = ["Abstract", "Portrait", "3D Installation", "Sculpture", "Mixed Media", "Digital Art & NFTs"] as const;
 
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
