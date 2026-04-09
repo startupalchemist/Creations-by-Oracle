@@ -2946,7 +2946,9 @@ Generate only the requested fields. Respond in this exact JSON format:
         : process.env.REPLIT_DEPLOYMENT_URL
         ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
         : "http://localhost:5000";
-      const absoluteImageUrl = imageUrl.startsWith("http") ? imageUrl : `${baseUrl}${imageUrl}`;
+      const absoluteImageUrl = imageUrl.startsWith("http") || imageUrl.startsWith("data:")
+        ? imageUrl
+        : `${baseUrl}${imageUrl}`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
