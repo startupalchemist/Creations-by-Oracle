@@ -472,6 +472,11 @@ async function seedCommissionPricing(): Promise<void> {
       await storage.setSetting("commission_terms_note", "50% deposit required to begin. Remaining balance due upon completion before delivery.");
       log("[commission seed] Seeded commission_terms_note default");
     }
+    const qualityThresholdExisting = await storage.getSetting("image_quality_threshold");
+    if (!qualityThresholdExisting) {
+      await storage.setSetting("image_quality_threshold", "60");
+      log("[commission seed] Seeded image_quality_threshold default (60)");
+    }
   } catch (err) {
     log(`[commission seed] Failed: ${err}`);
   }

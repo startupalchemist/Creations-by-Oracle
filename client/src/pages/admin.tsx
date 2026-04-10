@@ -4526,6 +4526,8 @@ function ShopTab({ toast }: { toast: any }) {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [enhancing, setEnhancing] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
+  const [qualityGateWarning, setQualityGateWarning] = useState<{ captureScore: number; threshold: number; pendingPayload: any } | null>(null);
+  const [optimizing, setOptimizing] = useState(false);
 
   const [form, setForm] = useState({
     title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "",
@@ -4539,6 +4541,7 @@ function ShopTab({ toast }: { toast: any }) {
     setAiResult(null);
     setCapturedImage(null);
     setEditingId(null);
+    setQualityGateWarning(null);
   };
 
   const { data: artworks, isLoading } = useQuery<Artwork[]>({
@@ -4598,7 +4601,7 @@ function ShopTab({ toast }: { toast: any }) {
         url = await uploadImage(imageUrl, form.title || "artwork");
         setForm((f) => ({ ...f, imageUrl: url }));
       }
-      const r = await apiRequest("POST", "/api/ai/enhance-artwork", { imageUrl: url, title: form.title, medium: form.medium, dimensions: form.dimensions });
+      const r = await apiRequest("POST", "/api/ai/enhance-artwork", { imageUrl: url, artworkId: editingId ?? undefined, title: form.title, medium: form.medium, dimensions: form.dimensions });
       const json = await r.json();
       setAiResult(json);
       setForm((f) => ({ ...f, description: json.description || f.description, seoTitle: json.seoTitle || f.seoTitle, seoDescription: json.seoDescription || f.seoDescription, price: json.suggestedPrice ? String(json.suggestedPrice) : f.price }));
@@ -4618,13 +4621,58 @@ function ShopTab({ toast }: { toast: any }) {
     reader.readAsDataURL(file);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (overrideQualityGate = false) => {
     let imageUrl = form.imageUrl;
     let enhancedImageUrl = form.enhancedImageUrl;
     if (imageUrl && imageUrl.startsWith("data:")) imageUrl = await uploadImage(imageUrl, form.title || "artwork");
     if (enhancedImageUrl && enhancedImageUrl.startsWith("data:")) enhancedImageUrl = await uploadImage(enhancedImageUrl, (form.title || "artwork") + "-enhanced");
-    const payload = { ...form, imageUrl, enhancedImageUrl, year: form.year ? parseInt(form.year) : null, price: form.price || null, printMarkupPercent: form.printMarkupPercent ? parseInt(form.printMarkupPercent) : 40 };
-    if (editingId) { updateArtwork.mutate({ id: editingId, data: payload }); } else { createArtwork.mutate(payload); }
+    const payload: any = { ...form, imageUrl, enhancedImageUrl, year: form.year ? parseInt(form.year) : null, price: form.price || null, printMarkupPercent: form.printMarkupPercent ? parseInt(form.printMarkupPercent) : 40 };
+    if (overrideQualityGate) payload.overrideQualityGate = true;
+    if (editingId) {
+      try {
+        const res = await fetch(`/api/artworks/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
+        if (res.status === 422) {
+          const data = await res.json();
+          if (data.requiresOptimization) {
+            setQualityGateWarning({ captureScore: data.captureScore, threshold: data.threshold, pendingPayload: payload });
+            return;
+          }
+        }
+        if (!res.ok) { const data = await res.json(); throw new Error(data.message || "Failed to update artwork"); }
+        queryClient.invalidateQueries({ queryKey: ["/api/artworks"] });
+        toast({ title: "Artwork updated" });
+        setEditingId(null);
+        resetForm();
+        setQualityGateWarning(null);
+      } catch (e: any) {
+        toast({ title: "Error", description: e.message, variant: "destructive" });
+      }
+    } else {
+      createArtwork.mutate(payload);
+    }
+  };
+
+  const handleOptimize = async () => {
+    if (!editingId) return;
+    setOptimizing(true);
+    try {
+      const res = await fetch(`/api/artworks/${editingId}/optimize-image`, { method: "POST", credentials: "include" });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message || "Optimization failed"); }
+      const data = await res.json();
+      setForm((f) => ({ ...f, enhancedImageUrl: data.optimizedUrl }));
+      toast({ title: "Image optimized", description: "Re-running AI analysis to update score..." });
+      setQualityGateWarning(null);
+      // Re-analyze with the new image
+      const url = data.optimizedUrl;
+      const r = await apiRequest("POST", "/api/ai/enhance-artwork", { imageUrl: url, artworkId: editingId, title: form.title, medium: form.medium, dimensions: form.dimensions });
+      const json = await r.json();
+      setAiResult(json);
+      toast({ title: "Re-analysis complete", description: `New capture score: ${json.captureScore}/100` });
+    } catch (e: any) {
+      toast({ title: "Optimization failed", description: e.message, variant: "destructive" });
+    } finally {
+      setOptimizing(false);
+    }
   };
 
   const startEdit = (artwork: Artwork) => {
@@ -4784,12 +4832,36 @@ function ShopTab({ toast }: { toast: any }) {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs flex-1" disabled={!form.title || createArtwork.isPending || updateArtwork.isPending} onClick={handleSave} data-testid="button-save-artwork">
-                  {(createArtwork.isPending || updateArtwork.isPending) ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+                <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs flex-1" disabled={!form.title || createArtwork.isPending} onClick={() => handleSave()} data-testid="button-save-artwork">
+                  {createArtwork.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Save className="w-3.5 h-3.5 mr-1" />}
                   {editingId ? "Update Artwork" : "Save Artwork"}
                 </Button>
-                <Button variant="ghost" className="text-[#B3B3B8] text-xs border border-white/10" onClick={() => { setShowCreate(false); resetForm(); }}>Cancel</Button>
+                <Button variant="ghost" className="text-[#B3B3B8] text-xs border border-white/10" onClick={() => { setShowCreate(false); resetForm(); setQualityGateWarning(null); }}>Cancel</Button>
               </div>
+              {qualityGateWarning && (
+                <div className="border border-amber-500/40 rounded-sm p-4 mt-2 space-y-3" style={{ background: "rgba(245,158,11,0.07)" }} data-testid="panel-quality-gate-warning">
+                  <div className="flex items-start gap-2">
+                    <span className="text-amber-400 text-lg leading-none">⚠</span>
+                    <div>
+                      <p className="text-amber-400 text-xs font-semibold uppercase tracking-[0.12em]">Image Quality Below Threshold</p>
+                      <p className="text-[#B3B3B8]/70 text-xs mt-0.5">
+                        Capture score: <span className={`font-semibold ${qualityGateWarning.captureScore >= 60 ? "text-amber-400" : "text-red-400"}`}>{qualityGateWarning.captureScore}/100</span>
+                        {" · "}Required threshold: <span className="text-[#F5F5F7]">{qualityGateWarning.threshold}</span>
+                      </p>
+                      <p className="text-[#B3B3B8]/40 text-[11px] mt-1">Optimize the image with auto-levels, sharpening, and saturation boost, then re-analyze before publishing.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs flex-1" disabled={optimizing} onClick={handleOptimize} data-testid="button-optimize-image">
+                      {optimizing ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <Sparkles className="w-3 h-3 mr-1.5" />}
+                      {optimizing ? "Optimizing..." : "Optimize & Re-Analyze"}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-amber-400/70 text-xs border border-amber-500/20 hover:bg-amber-500/10" onClick={() => handleSave(true)} data-testid="button-override-quality-gate">
+                      Publish Anyway
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -4830,6 +4902,13 @@ function ShopTab({ toast }: { toast: any }) {
                   {artwork.forSale && !artwork.sold && <span className="text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded-sm bg-[#C084FC]/20 text-[#C084FC]">For Sale</span>}
                   {artwork.sold && <span className="text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded-sm bg-gray-500/20 text-gray-400">Sold</span>}
                 </div>
+                {(artwork as any).captureScore != null && (
+                  <div className="absolute top-2 right-2">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-sm font-semibold ${(artwork as any).captureScore >= 80 ? "bg-green-500/20 text-green-400" : (artwork as any).captureScore >= 60 ? "bg-amber-500/20 text-amber-400" : "bg-red-500/20 text-red-400"}`} data-testid={`badge-capture-score-${artwork.id}`}>
+                      {(artwork as any).captureScore}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="p-3 space-y-2">
                 <div>
@@ -5737,15 +5816,18 @@ const SOCIAL_FIELDS: SocialField[] = [
 function CommissionSettingsPanel({ toast }: { toast: any }) {
   const [depositPct, setDepositPct] = useState("50");
   const [termsNote, setTermsNote] = useState("");
+  const [qualityThreshold, setQualityThreshold] = useState("60");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/settings/commission_deposit_pct", { credentials: "include" }).then((r) => r.json()),
       fetch("/api/settings/commission_terms_note", { credentials: "include" }).then((r) => r.json()),
-    ]).then(([pct, terms]) => {
+      fetch("/api/settings/image_quality_threshold", { credentials: "include" }).then((r) => r.json()),
+    ]).then(([pct, terms, qt]) => {
       setDepositPct(pct.value ?? "50");
       setTermsNote(terms.value ?? "");
+      setQualityThreshold(qt.value ?? "60");
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -5754,12 +5836,15 @@ function CommissionSettingsPanel({ toast }: { toast: any }) {
     mutationFn: async () => {
       const pctNum = parseInt(depositPct);
       if (isNaN(pctNum) || pctNum < 1 || pctNum > 100) throw new Error("Deposit % must be 1–100");
+      const qtNum = parseInt(qualityThreshold);
+      if (isNaN(qtNum) || qtNum < 0 || qtNum > 100) throw new Error("Quality threshold must be 0–100");
       await apiRequest("PUT", "/api/settings/commission_deposit_pct", { value: String(pctNum) });
       await apiRequest("PUT", "/api/settings/commission_terms_note", { value: termsNote });
+      await apiRequest("PUT", "/api/settings/image_quality_threshold", { value: String(qtNum) });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commission/pricing"] });
-      toast({ title: "Commission settings saved" });
+      toast({ title: "Settings saved" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -5801,6 +5886,23 @@ function CommissionSettingsPanel({ toast }: { toast: any }) {
           <p className="text-[#B3B3B8]/30 text-[10px] mt-1">Shown to customers on the Review & Pay step of the commission builder.</p>
         </div>
       </div>
+      <div className="space-y-5 p-6 rounded-md bg-[#141416] border border-white/5">
+        <p className="text-xs uppercase tracking-[0.25em] text-[#C084FC]/70 font-semibold mb-2">Image Quality Gate</p>
+        <div>
+          <label className="block text-[#B3B3B8]/60 text-xs uppercase tracking-[0.15em] mb-1.5">Minimum Capture Score (0–100)</label>
+          <Input
+            type="number"
+            min={0}
+            max={100}
+            value={qualityThreshold}
+            onChange={(e) => setQualityThreshold(e.target.value)}
+            placeholder="60"
+            className="bg-[#0B0B0D] border-white/10 text-[#F5F5F7] text-sm max-w-[120px]"
+            data-testid="input-image-quality-threshold"
+          />
+          <p className="text-[#B3B3B8]/30 text-[10px] mt-1">Artworks with AI capture scores below this threshold will be blocked from publishing unless overridden. Set to 0 to disable.</p>
+        </div>
+      </div>
       <Button
         onClick={() => saveMutation.mutate()}
         disabled={saveMutation.isPending}
@@ -5808,7 +5910,7 @@ function CommissionSettingsPanel({ toast }: { toast: any }) {
         data-testid="button-commission-settings-save"
       >
         {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Save className="w-3.5 h-3.5 mr-2" />}
-        Save Commission Settings
+        Save Settings
       </Button>
     </div>
   );

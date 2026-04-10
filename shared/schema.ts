@@ -372,6 +372,8 @@ export const artworks = pgTable("artworks", {
   // Provenance & Edition
   provenanceNotes: text("provenance_notes"),
   editionInfo: text("edition_info"),
+  // Image quality
+  captureScore: integer("capture_score"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { authMiddleware, requireRole, hashPassword, verifyPassword, createSession, destroySession } from "./auth";
 import crypto from "crypto";
 import OpenAI from "openai";
+import sharp from "sharp";
 import { getResendClient } from "./resend";
 import { isPrintfulConfigured, getPrintfulStoreInfo, getPrintfulProduct, getProductVariants, createPrintfulProduct, createPrintfulOrder, getOrderStatus, PRINT_SIZE_TEMPLATES, computeVariantRetailPrice } from "./printful";
 
@@ -2416,15 +2417,32 @@ Generate only the requested fields. Respond in this exact JSON format:
         printMarkupPercent: z.number().optional(),
         provenanceNotes: z.string().nullable().optional(),
         editionInfo: z.string().nullable().optional(),
+        overrideQualityGate: z.boolean().optional(),
       });
       const parsed = artworkPatchSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const { overrideQualityGate, ...parsedData } = parsed.data;
       const updates: Record<string, any> = {};
-      for (const [k, v] of Object.entries(parsed.data)) {
+      for (const [k, v] of Object.entries(parsedData)) {
         if (v !== undefined) updates[k] = v;
       }
       const existingArtwork = await storage.getArtworkById(id);
       const isTransitioningToPublished = updates.status === "published" && existingArtwork?.status !== "published";
+
+      // Quality gate: block publish if captureScore is below threshold (unless override requested)
+      if (updates.status === "published" && !overrideQualityGate) {
+        const thresholdStr = await storage.getSetting("image_quality_threshold");
+        const threshold = parseInt(thresholdStr || "60", 10);
+        const score = (existingArtwork as any)?.captureScore;
+        if (score !== null && score !== undefined && score < threshold) {
+          return res.status(422).json({
+            requiresOptimization: true,
+            captureScore: score,
+            threshold,
+            message: `Image quality score (${score}) is below the required threshold (${threshold}). Please optimize the image or override to publish anyway.`,
+          });
+        }
+      }
       if (updates.status === "published") {
         if (existingArtwork && !existingArtwork.publishedAt) {
           updates.publishedAt = new Date();
@@ -2933,12 +2951,13 @@ Generate only the requested fields. Respond in this exact JSON format:
     try {
       const parsed = z.object({
         imageUrl: z.string().min(1, "imageUrl is required"),
+        artworkId: z.number().int().optional(),
         title: z.string().optional(),
         medium: z.string().optional(),
         dimensions: z.string().optional(),
       }).safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "imageUrl is required" });
-      const { imageUrl, title, medium, dimensions } = parsed.data;
+      const { imageUrl, artworkId, title, medium, dimensions } = parsed.data;
 
       // Build absolute URL for the image if it's a relative path
       const baseUrl = process.env.REPLIT_DEV_DOMAIN
@@ -2993,10 +3012,70 @@ For suggestedPrice: Based on apparent medium, size, and complexity — suggest a
         result = {};
       }
 
+      // Persist captureScore to the artwork record if artworkId was provided
+      if (artworkId && typeof result.captureScore === "number") {
+        try {
+          await storage.updateArtwork(artworkId, { captureScore: result.captureScore } as any);
+        } catch (persistErr) {
+          console.warn("Could not persist captureScore:", persistErr);
+        }
+      }
+
       res.json(result);
     } catch (e: any) {
       console.error("AI enhance error:", e?.message);
       res.status(500).json({ message: "AI analysis failed", error: e?.message });
+    }
+  });
+
+  // ─── Image Optimization (Sharp) ──────────────────────────────────────
+
+  app.post("/api/artworks/:id/optimize-image", authMiddleware, requireRole("root", "admin", "editor"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid artwork ID" });
+      const artwork = await storage.getArtworkById(id);
+      if (!artwork) return res.status(404).json({ message: "Artwork not found" });
+
+      const imageUrl = artwork.imageUrl;
+      if (!imageUrl) return res.status(400).json({ message: "Artwork has no image to optimize" });
+
+      const uploadDir = path.resolve(process.cwd(), "uploads");
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+      let inputBuffer: Buffer;
+      if (imageUrl.startsWith("data:")) {
+        const base64Data = imageUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+        inputBuffer = Buffer.from(base64Data, "base64");
+      } else if (imageUrl.startsWith("http")) {
+        const imgResp = await fetch(imageUrl);
+        inputBuffer = Buffer.from(await imgResp.arrayBuffer());
+      } else {
+        const localPath = path.resolve(process.cwd(), imageUrl.replace(/^\//, ""));
+        if (!fs.existsSync(localPath)) return res.status(400).json({ message: "Image file not found on server" });
+        inputBuffer = fs.readFileSync(localPath);
+      }
+
+      const outputFilename = `optimized-${id}-${Date.now()}.jpg`;
+      const outputPath = path.join(uploadDir, outputFilename);
+
+      await sharp(inputBuffer)
+        .resize({ width: 2400, withoutEnlargement: true })
+        .sharpen({ sigma: 1.2 })
+        .modulate({ brightness: 1.05, saturation: 1.15 })
+        .normalise()
+        .jpeg({ quality: 92, progressive: true })
+        .toFile(outputPath);
+
+      const optimizedUrl = `/uploads/${outputFilename}`;
+      await storage.updateArtwork(id, { enhancedImageUrl: optimizedUrl } as any);
+
+      await logAdminAction(req, "artwork_image_optimized", `Artwork "${artwork.title}" image optimized via Sharp`, { entityType: "artwork", entityId: String(id) });
+
+      res.json({ optimizedUrl, message: "Image optimized and saved as enhanced version" });
+    } catch (e: any) {
+      console.error("Optimize image error:", e?.message);
+      res.status(500).json({ message: "Image optimization failed", error: e?.message });
     }
   });
 
