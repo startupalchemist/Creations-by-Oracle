@@ -4526,18 +4526,19 @@ function ShopTab({ toast }: { toast: any }) {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [enhancing, setEnhancing] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
-  const [qualityGateWarning, setQualityGateWarning] = useState<{ captureScore: number; threshold: number; pendingPayload: any } | null>(null);
+  const [qualityGateWarning, setQualityGateWarning] = useState<{ captureScore: number; threshold: number; pendingPayload: Record<string, unknown> } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
     title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "",
     enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false,
     seoTitle: "", seoDescription: "", status: "draft", printMarkupPercent: "40",
-    provenanceNotes: "", editionInfo: "",
+    provenanceNotes: "", editionInfo: "", captureScore: null as number | null,
   });
 
   const resetForm = () => {
-    setForm({ title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "", enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false, seoTitle: "", seoDescription: "", status: "draft", printMarkupPercent: "40", provenanceNotes: "", editionInfo: "" });
+    setForm({ title: "", medium: "", dimensions: "", year: "", description: "", imageUrl: "", enhancedImageUrl: "", price: "", forSale: false, category: "Abstract", featured: false, seoTitle: "", seoDescription: "", status: "draft", printMarkupPercent: "40", provenanceNotes: "", editionInfo: "", captureScore: null });
     setAiResult(null);
     setCapturedImage(null);
     setEditingId(null);
@@ -4604,7 +4605,7 @@ function ShopTab({ toast }: { toast: any }) {
       const r = await apiRequest("POST", "/api/ai/enhance-artwork", { imageUrl: url, artworkId: editingId ?? undefined, title: form.title, medium: form.medium, dimensions: form.dimensions });
       const json = await r.json();
       setAiResult(json);
-      setForm((f) => ({ ...f, description: json.description || f.description, seoTitle: json.seoTitle || f.seoTitle, seoDescription: json.seoDescription || f.seoDescription, price: json.suggestedPrice ? String(json.suggestedPrice) : f.price }));
+      setForm((f) => ({ ...f, description: json.description || f.description, seoTitle: json.seoTitle || f.seoTitle, seoDescription: json.seoDescription || f.seoDescription, price: json.suggestedPrice ? String(json.suggestedPrice) : f.price, captureScore: typeof json.captureScore === "number" ? json.captureScore : f.captureScore }));
       toast({ title: "AI analysis complete", description: `Capture score: ${json.captureScore}/100` });
     } catch (e: any) {
       toast({ title: "AI analysis failed", description: e.message, variant: "destructive" });
@@ -4622,33 +4623,61 @@ function ShopTab({ toast }: { toast: any }) {
   };
 
   const handleSave = async (overrideQualityGate = false) => {
+    setSaving(true);
+    try {
     let imageUrl = form.imageUrl;
     let enhancedImageUrl = form.enhancedImageUrl;
     if (imageUrl && imageUrl.startsWith("data:")) imageUrl = await uploadImage(imageUrl, form.title || "artwork");
     if (enhancedImageUrl && enhancedImageUrl.startsWith("data:")) enhancedImageUrl = await uploadImage(enhancedImageUrl, (form.title || "artwork") + "-enhanced");
-    const payload: any = { ...form, imageUrl, enhancedImageUrl, year: form.year ? parseInt(form.year) : null, price: form.price || null, printMarkupPercent: form.printMarkupPercent ? parseInt(form.printMarkupPercent) : 40 };
+    const payload: Record<string, unknown> = {
+      ...form,
+      imageUrl,
+      enhancedImageUrl,
+      year: form.year ? parseInt(form.year) : null,
+      price: form.price || null,
+      printMarkupPercent: form.printMarkupPercent ? parseInt(form.printMarkupPercent) : 40,
+      captureScore: form.captureScore ?? undefined,
+    };
     if (overrideQualityGate) payload.overrideQualityGate = true;
-    if (editingId) {
+
+    const handleQualityGate = async (method: string, url: string) => {
       try {
-        const res = await fetch(`/api/artworks/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
+        const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
         if (res.status === 422) {
           const data = await res.json();
           if (data.requiresOptimization) {
             setQualityGateWarning({ captureScore: data.captureScore, threshold: data.threshold, pendingPayload: payload });
-            return;
+            return false;
           }
         }
-        if (!res.ok) { const data = await res.json(); throw new Error(data.message || "Failed to update artwork"); }
+        if (!res.ok) { const data = await res.json(); throw new Error(data.message || `Failed to ${editingId ? "update" : "create"} artwork`); }
+        return true;
+      } catch (e: any) {
+        toast({ title: "Error", description: e.message, variant: "destructive" });
+        return false;
+      }
+    };
+
+    if (editingId) {
+      const ok = await handleQualityGate("PATCH", `/api/artworks/${editingId}`);
+      if (ok) {
         queryClient.invalidateQueries({ queryKey: ["/api/artworks"] });
         toast({ title: "Artwork updated" });
         setEditingId(null);
         resetForm();
         setQualityGateWarning(null);
-      } catch (e: any) {
-        toast({ title: "Error", description: e.message, variant: "destructive" });
       }
     } else {
-      createArtwork.mutate(payload);
+      const ok = await handleQualityGate("POST", "/api/artworks");
+      if (ok) {
+        queryClient.invalidateQueries({ queryKey: ["/api/artworks"] });
+        toast({ title: "Artwork created" });
+        setShowCreate(false);
+        resetForm();
+      }
+    }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -4677,7 +4706,7 @@ function ShopTab({ toast }: { toast: any }) {
 
   const startEdit = (artwork: Artwork) => {
     setEditingId(artwork.id);
-    setForm({ title: artwork.title, medium: artwork.medium || "", dimensions: artwork.dimensions || "", year: artwork.year ? String(artwork.year) : "", description: artwork.description || "", imageUrl: artwork.imageUrl || "", enhancedImageUrl: artwork.enhancedImageUrl || "", price: artwork.price ? String(artwork.price) : "", forSale: artwork.forSale ?? false, category: artwork.category || "Abstract", featured: artwork.featured ?? false, seoTitle: artwork.seoTitle || "", seoDescription: artwork.seoDescription || "", status: artwork.status || "draft", printMarkupPercent: artwork.printMarkupPercent ? String(artwork.printMarkupPercent) : "40", provenanceNotes: artwork.provenanceNotes || "", editionInfo: artwork.editionInfo || "" });
+    setForm({ title: artwork.title, medium: artwork.medium || "", dimensions: artwork.dimensions || "", year: artwork.year ? String(artwork.year) : "", description: artwork.description || "", imageUrl: artwork.imageUrl || "", enhancedImageUrl: artwork.enhancedImageUrl || "", price: artwork.price ? String(artwork.price) : "", forSale: artwork.forSale ?? false, category: artwork.category || "Abstract", featured: artwork.featured ?? false, seoTitle: artwork.seoTitle || "", seoDescription: artwork.seoDescription || "", status: artwork.status || "draft", printMarkupPercent: artwork.printMarkupPercent ? String(artwork.printMarkupPercent) : "40", provenanceNotes: artwork.provenanceNotes || "", editionInfo: artwork.editionInfo || "", captureScore: artwork.captureScore ?? null });
     setShowCreate(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -4832,8 +4861,8 @@ function ShopTab({ toast }: { toast: any }) {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs flex-1" disabled={!form.title || createArtwork.isPending} onClick={() => handleSave()} data-testid="button-save-artwork">
-                  {createArtwork.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+                <Button className="bg-[#C084FC] hover:bg-[#a855f7] text-white border-0 text-xs flex-1" disabled={!form.title || saving} onClick={() => handleSave()} data-testid="button-save-artwork">
+                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Save className="w-3.5 h-3.5 mr-1" />}
                   {editingId ? "Update Artwork" : "Save Artwork"}
                 </Button>
                 <Button variant="ghost" className="text-[#B3B3B8] text-xs border border-white/10" onClick={() => { setShowCreate(false); resetForm(); setQualityGateWarning(null); }}>Cancel</Button>
@@ -4902,10 +4931,10 @@ function ShopTab({ toast }: { toast: any }) {
                   {artwork.forSale && !artwork.sold && <span className="text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded-sm bg-[#C084FC]/20 text-[#C084FC]">For Sale</span>}
                   {artwork.sold && <span className="text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded-sm bg-gray-500/20 text-gray-400">Sold</span>}
                 </div>
-                {(artwork as any).captureScore != null && (
+                {artwork.captureScore != null && (
                   <div className="absolute top-2 right-2">
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-sm font-semibold ${(artwork as any).captureScore >= 80 ? "bg-green-500/20 text-green-400" : (artwork as any).captureScore >= 60 ? "bg-amber-500/20 text-amber-400" : "bg-red-500/20 text-red-400"}`} data-testid={`badge-capture-score-${artwork.id}`}>
-                      {(artwork as any).captureScore}
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-sm font-semibold ${artwork.captureScore >= 80 ? "bg-green-500/20 text-green-400" : artwork.captureScore >= 60 ? "bg-amber-500/20 text-amber-400" : "bg-red-500/20 text-red-400"}`} data-testid={`badge-capture-score-${artwork.id}`}>
+                      {artwork.captureScore}
                     </span>
                   </div>
                 )}

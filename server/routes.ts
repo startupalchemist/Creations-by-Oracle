@@ -2354,10 +2354,29 @@ Generate only the requested fields. Respond in this exact JSON format:
         seoKeywords: z.array(z.string()).optional(),
         provenanceNotes: z.string().nullable().optional(),
         editionInfo: z.string().nullable().optional(),
+        status: z.enum(artworkStatuses as [string, ...string[]]).optional(),
+        captureScore: z.number().int().nullable().optional(),
+        overrideQualityGate: z.boolean().optional(),
       });
       const parsed = artworkBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      const { title, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, category, featured, seoTitle, seoDescription, seoKeywords, provenanceNotes, editionInfo } = parsed.data;
+      const { title, medium, dimensions, year, description, imageUrl, enhancedImageUrl, price, forSale, category, featured, seoTitle, seoDescription, seoKeywords, provenanceNotes, editionInfo, status, captureScore, overrideQualityGate } = parsed.data;
+
+      // Quality gate: block publish-on-create if captureScore is below threshold (unless override)
+      const targetStatus = status || "draft";
+      if (targetStatus === "published" && !overrideQualityGate) {
+        const thresholdStr = await storage.getSetting("image_quality_threshold");
+        const threshold = parseInt(thresholdStr || "60", 10);
+        if (captureScore !== null && captureScore !== undefined && captureScore < threshold) {
+          return res.status(422).json({
+            requiresOptimization: true,
+            captureScore,
+            threshold,
+            message: `Image quality score (${captureScore}) is below the required threshold (${threshold}).`,
+          });
+        }
+      }
+
       let slug = slugify(title);
       const existing = await storage.getArtworkBySlug(slug);
       if (existing) slug = slug + "-" + Date.now().toString(36);
@@ -2373,15 +2392,16 @@ Generate only the requested fields. Respond in this exact JSON format:
         price: price ? String(price) : null,
         forSale: forSale ?? false,
         sold: false,
-        status: "draft",
+        status: targetStatus,
         category: category || "Abstract",
         featured: featured ?? false,
         seoTitle: seoTitle || null,
         seoDescription: seoDescription || null,
         seoKeywords: seoKeywords || [],
-        publishedAt: null,
+        publishedAt: targetStatus === "published" ? new Date() : null,
         provenanceNotes: provenanceNotes || null,
         editionInfo: editionInfo || null,
+        captureScore: captureScore ?? null,
       });
       res.status(201).json(artwork);
     } catch {
@@ -3015,7 +3035,7 @@ For suggestedPrice: Based on apparent medium, size, and complexity — suggest a
       // Persist captureScore to the artwork record if artworkId was provided
       if (artworkId && typeof result.captureScore === "number") {
         try {
-          await storage.updateArtwork(artworkId, { captureScore: result.captureScore } as any);
+          await storage.updateArtwork(artworkId, { captureScore: result.captureScore });
         } catch (persistErr) {
           console.warn("Could not persist captureScore:", persistErr);
         }
@@ -3043,15 +3063,26 @@ For suggestedPrice: Based on apparent medium, size, and complexity — suggest a
       const uploadDir = path.resolve(process.cwd(), "uploads");
       if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+      // Only allow local files (uploads, attached_assets) or data URIs — no external HTTP fetching (SSRF risk)
+      if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+        return res.status(400).json({ message: "External image URLs cannot be optimized. Please upload the image to the server first." });
+      }
+
       let inputBuffer: Buffer;
       if (imageUrl.startsWith("data:")) {
         const base64Data = imageUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
         inputBuffer = Buffer.from(base64Data, "base64");
-      } else if (imageUrl.startsWith("http")) {
-        const imgResp = await fetch(imageUrl);
-        inputBuffer = Buffer.from(await imgResp.arrayBuffer());
       } else {
-        const localPath = path.resolve(process.cwd(), imageUrl.replace(/^\//, ""));
+        // Resolve relative to project root and validate it stays within allowed dirs
+        const safeRelative = imageUrl.replace(/^\/+/, "");
+        if (!safeRelative.startsWith("uploads/") && !safeRelative.startsWith("attached_assets/") && !safeRelative.startsWith("public/")) {
+          return res.status(400).json({ message: "Image path is not in an allowed directory." });
+        }
+        const localPath = path.resolve(process.cwd(), safeRelative);
+        // Extra guard: ensure the resolved path is inside the project root
+        if (!localPath.startsWith(path.resolve(process.cwd()))) {
+          return res.status(400).json({ message: "Invalid image path." });
+        }
         if (!fs.existsSync(localPath)) return res.status(400).json({ message: "Image file not found on server" });
         inputBuffer = fs.readFileSync(localPath);
       }
@@ -3068,7 +3099,7 @@ For suggestedPrice: Based on apparent medium, size, and complexity — suggest a
         .toFile(outputPath);
 
       const optimizedUrl = `/uploads/${outputFilename}`;
-      await storage.updateArtwork(id, { enhancedImageUrl: optimizedUrl } as any);
+      await storage.updateArtwork(id, { enhancedImageUrl: optimizedUrl });
 
       await logAdminAction(req, "artwork_image_optimized", `Artwork "${artwork.title}" image optimized via Sharp`, { entityType: "artwork", entityId: String(id) });
 
