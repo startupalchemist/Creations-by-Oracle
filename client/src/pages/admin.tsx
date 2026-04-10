@@ -4682,20 +4682,37 @@ function ShopTab({ toast }: { toast: any }) {
   };
 
   const handleOptimize = async () => {
-    if (!editingId) return;
     setOptimizing(true);
     try {
-      const res = await fetch(`/api/artworks/${editingId}/optimize-image`, { method: "POST", credentials: "include" });
+      let targetId = editingId;
+
+      // In create mode: save as draft first to get an ID, then switch to edit mode
+      if (!targetId) {
+        let imageUrl = form.imageUrl;
+        let enhancedImageUrl = form.enhancedImageUrl;
+        if (imageUrl && imageUrl.startsWith("data:")) imageUrl = await uploadImage(imageUrl, form.title || "artwork");
+        if (enhancedImageUrl && enhancedImageUrl.startsWith("data:")) enhancedImageUrl = await uploadImage(enhancedImageUrl, (form.title || "artwork") + "-enhanced");
+        const draftPayload = { ...form, imageUrl, enhancedImageUrl, status: "draft", year: form.year ? parseInt(form.year) : null, price: form.price || null, printMarkupPercent: form.printMarkupPercent ? parseInt(form.printMarkupPercent) : 40, captureScore: form.captureScore ?? undefined };
+        const createRes = await fetch("/api/artworks", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(draftPayload) });
+        if (!createRes.ok) { const d = await createRes.json(); throw new Error(d.message || "Failed to save draft before optimization"); }
+        const created = await createRes.json();
+        targetId = created.id;
+        setEditingId(targetId);
+        queryClient.invalidateQueries({ queryKey: ["/api/artworks"] });
+        toast({ title: "Saved as draft", description: "Optimizing image..." });
+      }
+
+      const res = await fetch(`/api/artworks/${targetId}/optimize-image`, { method: "POST", credentials: "include" });
       if (!res.ok) { const d = await res.json(); throw new Error(d.message || "Optimization failed"); }
       const data = await res.json();
       setForm((f) => ({ ...f, enhancedImageUrl: data.optimizedUrl }));
-      toast({ title: "Image optimized", description: "Re-running AI analysis to update score..." });
       setQualityGateWarning(null);
-      // Re-analyze with the new image
-      const url = data.optimizedUrl;
-      const r = await apiRequest("POST", "/api/ai/enhance-artwork", { imageUrl: url, artworkId: editingId, title: form.title, medium: form.medium, dimensions: form.dimensions });
+      toast({ title: "Image optimized", description: "Re-running AI analysis to update score..." });
+      // Re-analyze with the optimized image
+      const r = await apiRequest("POST", "/api/ai/enhance-artwork", { imageUrl: data.optimizedUrl, artworkId: targetId, title: form.title, medium: form.medium, dimensions: form.dimensions });
       const json = await r.json();
       setAiResult(json);
+      if (typeof json.captureScore === "number") setForm((f) => ({ ...f, captureScore: json.captureScore }));
       toast({ title: "Re-analysis complete", description: `New capture score: ${json.captureScore}/100` });
     } catch (e: any) {
       toast({ title: "Optimization failed", description: e.message, variant: "destructive" });
