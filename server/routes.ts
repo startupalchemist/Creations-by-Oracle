@@ -2438,6 +2438,7 @@ Generate only the requested fields. Respond in this exact JSON format:
         provenanceNotes: z.string().nullable().optional(),
         editionInfo: z.string().nullable().optional(),
         overrideQualityGate: z.boolean().optional(),
+        captureScore: z.number().int().nullable().optional(),
       });
       const parsed = artworkPatchSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
@@ -2453,7 +2454,7 @@ Generate only the requested fields. Respond in this exact JSON format:
       if (updates.status === "published" && !overrideQualityGate) {
         const thresholdStr = await storage.getSetting("image_quality_threshold");
         const threshold = parseInt(thresholdStr || "60", 10);
-        const score = (existingArtwork as any)?.captureScore;
+        const score = existingArtwork?.captureScore;
         if (score !== null && score !== undefined && score < threshold) {
           return res.status(422).json({
             requiresOptimization: true,
