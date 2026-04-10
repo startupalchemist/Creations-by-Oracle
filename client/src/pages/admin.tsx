@@ -4526,7 +4526,7 @@ function ShopTab({ toast }: { toast: any }) {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [enhancing, setEnhancing] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
-  const [qualityGateWarning, setQualityGateWarning] = useState<{ captureScore: number; threshold: number; pendingPayload: Record<string, unknown> } | null>(null);
+  const [qualityGateWarning, setQualityGateWarning] = useState<{ captureScore: number; threshold: number } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -4646,7 +4646,7 @@ function ShopTab({ toast }: { toast: any }) {
         if (res.status === 422) {
           const data = await res.json();
           if (data.requiresOptimization) {
-            setQualityGateWarning({ captureScore: data.captureScore, threshold: data.threshold, pendingPayload: payload });
+            setQualityGateWarning({ captureScore: data.captureScore, threshold: data.threshold });
             return false;
           }
         }
